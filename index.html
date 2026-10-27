@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Звёздный Каскад — битва флотов</title>
+<meta name="description" content="Космическая тактическая битва флотов с механикой «три в ряд»: собирайте корабли из корпусов и оборудования и сражайтесь.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700;800&family=Russo+One&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="bg"></canvas>
+<main id="app">
+  <section id="scr-menu" class="screen"></section>
+  <section id="scr-setup" class="screen"></section>
+  <section id="scr-editor" class="screen"></section>
+  <section id="scr-battle" class="screen"></section>
+</main>
+<canvas id="overlay"></canvas>
+<div id="tooltip"></div>
+<div id="modal-root"></div>
+<script src="js/util.js"></script>
+<script src="js/data.js"></script>
+<script src="js/ship.js"></script>
+<script src="js/board.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/battle.js"></script>
+<script src="js/gfx.js"></script>
+<script src="js/boardview.js"></script>
+<script src="js/arena.js"></script>
+<script src="js/ui-common.js"></script>
+<script src="js/ui-menu.js"></script>
+<script src="js/ui-editor.js"></script>
+<script src="js/ui-battle.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
