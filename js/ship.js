@@ -13,18 +13,44 @@ function emptyDef(hullId, name) {
 }
 
 function cloneDef(def) {
-  return { name: def.name, hull: def.hull, slots: Object.fromEntries(SLOT_ORDER.map(k => [k, (def.slots[k] || []).slice()])) };
+  const d = { name: def.name, hull: def.hull, slots: Object.fromEntries(SLOT_ORDER.map(k => [k, (def.slots[k] || []).slice()])) };
+  if (def.wear) d.wear = Object.fromEntries(Object.entries(def.wear).map(([k, v]) => [k, v.slice()]));
+  return d;
 }
 
 function setHull(def, hullId) {
   const h = HULLS[hullId];
-  const nd = { name: def.name, hull: hullId, slots: {} };
+  const nd = { name: def.name, hull: hullId, slots: {}, wear: {} };
   for (const k of SLOT_ORDER) {
     const n = h.slots[k] || 0;
-    const old = (def.slots[k] || []).filter(Boolean);
-    nd.slots[k] = new Array(n).fill(null).map((_, i) => old[i] || null);
+    // модули переезжают в новый корпус вместе со своим износом
+    const old = (def.slots[k] || []).map((id, i) => [id, slotWear(def, k, i)]).filter(x => x[0]);
+    nd.slots[k] = new Array(n).fill(null).map((_, i) => old[i] ? old[i][0] : null);
+    nd.wear[k] = new Array(n).fill(0).map((_, i) => old[i] ? old[i][1] : 0);
   }
   return nd;
+}
+
+// ---------- Износ оборудования ----------
+// def.wear[cat][i]: 0 — новое, 1 — сломано (не работает). Изношенный модуль слабее, вплоть до половины мощности.
+const WEAR_SCALE = {
+  weapon: ['dmin', 'dmax'], shield: ['max', 'regen', 'passive'], engine: ['thrust', 'evade', 'ev', 'init'],
+  reactor: ['ePer', 'eCap', 'ePass'], arsenal: ['aPer', 'aCap', 'aPass'], droid: ['rPer', 'rPass'],
+  computer: ['acc', 'crit'], radar: ['range', 'acc', 'ev'], ew: ['power', 'ewRes', 'dPass'], armor: ['hp', 'armor'],
+};
+function slotWear(def, cat, i) { return (def.wear && def.wear[cat] && def.wear[cat][i]) || 0; }
+function setWear(def, cat, i, v) {
+  def.wear = def.wear || {};
+  def.wear[cat] = def.wear[cat] || new Array((def.slots[cat] || []).length).fill(0);
+  def.wear[cat][i] = U.clamp(v, 0, 1);
+}
+const wearMult = w => (w >= 1 ? 0 : 1 - w * 0.5);
+function wornItem(it, w) {
+  const k = wearMult(w), keys = WEAR_SCALE[it.cat];
+  if (k >= 1 || !keys) return it;
+  const c = Object.assign({}, it);
+  for (const key of keys) if (typeof c[key] === 'number') c[key] *= k;
+  return c;
 }
 
 function defItems(def) {
@@ -51,7 +77,14 @@ function computeStats(def) {
     ew: null, ewRes: 0, extraTurn: 0, phase: 0, reflect: 0, rage: 0, wcap: 0, cascade: 0, explDmg: 0,
     bias: h.bias.slice(), weapons: [], artifacts: [],
   };
-  const items = defItems(def);
+  s.broken = 0;
+  const items = [];
+  for (const k of SLOT_ORDER) (def.slots[k] || []).forEach((id, i) => {
+    if (!id || !ITEMS[id]) return;
+    const w = slotWear(def, k, i);
+    if (w >= 1) { s.mass += ITEMS[id].mass; s.broken++; return; } // сломанный модуль — мёртвый груз
+    items.push(wornItem(ITEMS[id], w));
+  });
   for (const it of items) {
     s.mass += it.mass;
     switch (it.cat) {
@@ -90,6 +123,7 @@ function computeStats(def) {
     }
   }
   if (!s.hasShield) { s.maxShield = 0; s.shieldRegen = 0; }
+  s.maxHp = Math.round(s.maxHp); s.maxShield = Math.round(s.maxShield);
   s.armor = U.clamp(s.armor, 0, 0.6);
   s.evasion = Math.max(0, s.evasion);
   s.ewRes = Math.min(0.85, s.ewRes);

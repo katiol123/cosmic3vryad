@@ -598,3 +598,14 @@ select { background: rgba(10,16,36,.9); border: 1px solid var(--line); border-ra
 .gx-pl.quest.mine { border-color: rgba(255,224,102,.7); box-shadow: 0 0 12px rgba(255,224,102,.15); }
 .gx-pl.quest .row { margin-top: 6px; }
 .ev.quest { border-color: #7df9ff; color: #c7f6ff; } .ev.buff { border-color: #2ee66b; color: #b6ffcf; } .ev.player { border-color: #ffe066; color: #ffe9a8; }
+
+/* ---------- износ и ремонт оборудования ---------- */
+.wear { font-size: 11px; font-weight: 600; color: #ffd166; margin-left: 4px; }
+.wear.bad { color: #ff8c42; }
+.wear.broken { color: #ff3b3b; }
+.rp-row { display: grid; grid-template-columns: 26px 1fr auto; gap: 8px; align-items: center; padding: 5px 6px; border-radius: 7px; font-size: 13px; }
+.rp-row:nth-child(odd) { background: rgba(255,255,255,.03); }
+.rp-row .nm { font-weight: 600; margin-bottom: 3px; }
+.gauge.wear-g { height: 14px; }
+.gauge.wear-g i { background: linear-gradient(90deg, #2a9d8f, #5ee0c8); }
+.gauge.wear-g.bad i { background: linear-gradient(90deg, #b5452b, #ff8c42); }

@@ -218,7 +218,7 @@ const SectorUI = {
     let html = '';
     if (o.type === 'planet') {
       const p = w.planets[o.id], f = p.owner >= 0 ? w.factions[p.owner] : null;
-      html = `<b>${p.name}</b><br>${p.pop > 0 ? PLANET_TYPES[p.type].name + ' · ' + p.pop.toFixed(1) + ' млн' : 'необитаема'}<br><span style="color:${f ? f.color : '#aaa'}">${f ? f.name : p.pop > 0 ? 'независимая' : ''}</span>${p.shipyard ? '<br>верфь ТУ ' + U.roman(p.shipyard) : ''}`;
+      html = `<b>${p.name}</b><br>${p.pop > 0 ? PLANET_TYPES[p.type].name + ' · ' + p.pop.toFixed(1) + ' млн' : 'необитаема'}<br><span style="color:${f ? f.color : '#aaa'}">${f ? f.name : p.pop > 0 ? 'независимая' : ''}</span>${p.shipyard ? '<br>верфь ТУ ' + U.roman(w.yardTier(p)) : ''}`;
     } else if (o.type === 'gate') {
       const s = w.sectors[o.to], f = s.owner >= 0 ? w.factions[s.owner] : null;
       html = `<b>Гиперворота → ${s.name}</b><br><span style="color:${f ? f.color : '#aaa'}">${f ? f.name : 'ничейный сектор'}</span><br>в коридоре ≈ ${w.laneDays(w.player, w.laneBetween(this.viewSector, o.to))} дн.`;
@@ -379,7 +379,7 @@ const SectorUI = {
       const pl = w.planets[o.id], f = pl.owner >= 0 ? w.factions[pl.owner] : null;
       U.add(B, h('div', { class: 'ph' }, pl.name), h('img', { class: 'sx-plimg', src: GFX.planet(pl, 120).canvas.toDataURL() }),
         h('div', { class: 'fs' }, pl.pop > 0 ? `${PLANET_TYPES[pl.type].name} · 👥 ${pl.pop.toFixed(1)} млн · стабильность ${Math.round(pl.stability * 100)}%` : 'Необитаемая планета'),
-        f ? h('div', { class: 'fs', style: { color: f.color } }, f.name + (pl.shipyard ? ` · верфь ТУ ${U.roman(pl.shipyard)}` : '')) : null,
+        f ? h('div', { class: 'fs', style: { color: f.color } }, f.name + (pl.shipyard ? ` · верфь ТУ ${U.roman(w.yardTier(pl))}` : '')) : null,
         pl.pop > 0 ? h('button', { class: 'btn primary', onclick: () => { if (p.docked === pl.id) this.openDock(pl); else this.setCourse({ type: 'planet', id: pl.id }); this.refresh(); } }, p.docked === pl.id ? '🛰 Открыть станцию' : '➤ Лететь и пристыковаться') : null);
     } else if (o.type === 'gate') {
       const s = w.sectors[o.to], f = s.owner >= 0 ? w.factions[s.owner] : null;
@@ -548,8 +548,8 @@ const SectorUI = {
         const it = id ? ITEMS[id] : null;
         const row = h('div', { class: 'slot' + (it ? ' full' : '') + (this.yardSlot && this.yardSlot.cat === k && this.yardSlot.i === i ? ' sel' : ''), onclick: () => { this.yardSlot = { cat: k, i }; this.renderDock(); } },
           h('span', { class: 'slot-ico' }, SLOT_TYPES[k].icon),
-          it ? h('div', { class: 'slot-b' }, h('div', { class: 'nm' }, it.name), h('div', { class: 'sh' }, Info.short(it))) : h('div', { class: 'slot-b empty' }, `${SLOT_TYPES[k].name}: пусто`),
-          it ? h('button', { class: 'ibtn danger', title: `Продать за ${Math.round(w.shopPrice(it) * 0.5)} кр.`, onclick: e => { e.stopPropagation(); w.sellItem(k, i); Sound.click(); this.renderDock(); } }, '₵') : null);
+          it ? h('div', { class: 'slot-b' }, h('div', { class: 'nm' }, it.name, this.wearBadge(p.def, k, i)), h('div', { class: 'sh' }, Info.short(it))) : h('div', { class: 'slot-b empty' }, `${SLOT_TYPES[k].name}: пусто`),
+          it ? h('button', { class: 'ibtn danger', title: `Продать за ${w.sellValue(id, slotWear(p.def, k, i))} кр.`, onclick: e => { e.stopPropagation(); w.sellItem(k, i); Sound.click(); this.renderDock(); } }, '₵') : null);
         if (it) Tip.bind(row, () => Info.tooltip(it));
         left.appendChild(row);
       });
@@ -581,7 +581,7 @@ const SectorUI = {
       const items = w.shopItems(pl, S.cat).sort((a, b) => a.tier - b.tier || a.price - b.price);
       if (!items.length) right.appendChild(h('div', { class: 'empty-note' }, 'Здесь такое не продают'));
       for (const it of items) {
-        const cost = w.shopPrice(it) - (cur ? Math.round(w.shopPrice(cur) * 0.5) : 0);
+        const cost = w.shopPrice(it) - (cur ? w.sellValue(cur.id, slotWear(p.def, S.cat, S.i)) : 0);
         const heavy = mass - (cur ? cur.mass : 0) + it.mass > cap, poor = cost > p.credits;
         const row = h('div', { class: 'pick-row' + (heavy || poor ? ' dis' : '') },
           h('span', { class: 'tier' }, U.roman(it.tier)),
@@ -608,12 +608,32 @@ const SectorUI = {
     wrap.append(left, right);
     B.appendChild(wrap);
   },
+  // значок износа модуля
+  wearBadge(def, k, i) {
+    const wr = slotWear(def, k, i);
+    if (wr < 0.05) return null;
+    return h('span', { class: 'wear' + (wr >= 1 ? ' broken' : wr >= 0.6 ? ' bad' : ''), title: wr >= 1 ? 'Модуль сломан и не работает' : `Износ ${Math.round(wr * 100)}%: мощность модуля −${Math.round(wr * 50)}%` }, wr >= 1 ? ' СЛОМАН' : ` износ ${Math.round(wr * 100)}%`);
+  },
   dkRepair(B) {
     const w = this.world, p = w.player;
     const c = w.repairCost();
-    U.add(B, h('div', { class: 'gauge hp big' }, h('i', { style: { width: (p.hp / p.maxHp * 100) + '%' } }), h('span', null, `Корпус ${Math.round(p.hp)} / ${p.maxHp}`)),
-      c > 0 ? h('button', { class: 'btn primary big', onclick: () => { w.repair(); Sound.special('cleanse'); this.renderDock(); } }, `✚ Полный ремонт: ${c} кр.`) : h('div', { class: 'empty-note' }, 'Корабль в полном порядке'),
-      h('div', { class: 'fs dim' }, 'Щиты восстанавливаются сами вне боя. Ремонтный дроид понемногу чинит корпус и в пути.'));
+    U.add(B, h('div', { class: 'ph sm' }, 'Корпус'),
+      h('div', { class: 'gauge hp big' }, h('i', { style: { width: (p.hp / p.maxHp * 100) + '%' } }), h('span', null, `Корпус ${Math.round(p.hp)} / ${p.maxHp}`)),
+      c > 0 ? h('button', { class: 'btn primary big', onclick: () => { w.repair(); Sound.special('cleanse'); this.renderDock(); } }, `✚ Залатать корпус: ${c} кр.`) : h('div', { class: 'fs dim' }, 'Корпус цел.'));
+    // оборудование
+    const rows = [];
+    for (const k of SLOT_ORDER) p.def.slots[k].forEach((id, i) => { if (id && k !== 'artifact') rows.push([k, i, id]); });
+    const total = w.gearRepairTotal(p);
+    B.appendChild(h('div', { class: 'ph sm' }, 'Оборудование'));
+    if (total > 0) B.appendChild(h('button', { class: 'btn primary', onclick: () => { const sp = w.repairGear(p, p.credits); if (!sp) this.toast('Не хватает кредитов', 'bad'); else Sound.special('cleanse'); this.renderDock(); } }, `🔧 Починить всё: ${total} кр.`));
+    for (const [k, i, id] of rows) {
+      const it = ITEMS[id], wr = slotWear(p.def, k, i), cost = w.gearRepairCost(p, k, i);
+      B.appendChild(h('div', { class: 'rp-row' },
+        h('span', { class: 'slot-ico' }, SLOT_TYPES[k].icon),
+        h('div', { class: 'fb' }, h('div', { class: 'nm' }, it.name), h('div', { class: 'gauge wear-g' + (wr >= 0.6 ? ' bad' : '') }, h('i', { style: { width: Math.round((1 - wr) * 100) + '%' } }), h('span', null, wr >= 1 ? 'сломан' : `состояние ${Math.round((1 - wr) * 100)}%`))),
+        cost > 0 ? h('button', { class: 'btn ghost', disabled: cost > p.credits ? true : null, onclick: () => { w.repairGear(p, cost, k, i); Sound.special('cleanse'); this.renderDock(); } }, `🔧 ${cost} кр.`) : h('span', { class: 'fs dim' }, 'как новый')));
+    }
+    B.appendChild(h('div', { class: 'fs dim' }, 'Модули изнашиваются в боях (сильнее — в тяжёлых), двигатель и реактор — в перелётах. Изношенный модуль слабее, вплоть до половины мощности; на 100% он ломается и перестаёт работать. Щиты восстанавливаются сами вне боя, ремонтный дроид понемногу чинит корпус.'));
   },
   questCard(q, compact) {
     const w = this.world, p = w.player, F = w.factions[q.giver];

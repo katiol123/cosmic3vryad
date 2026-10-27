@@ -1,7 +1,7 @@
 // Прогон кампании без графики: node tools/world.js [дней] [зерно]
 const fs = require('fs'), vm = require('vm'), path = require('path');
 const root = path.join(__dirname, '..');
-for (const f of ['util', 'data', 'ship', 'board', 'ai', 'battle', 'world-data', 'world', 'world-player', 'quests'])
+for (const f of ['util', 'data', 'ship', 'board', 'ai', 'battle', 'world-data', 'world', 'world-player', 'quests', 'pilots'])
   vm.runInThisContext(fs.readFileSync(path.join(root, 'js', f + '.js'), 'utf8'), { filename: f + '.js' });
 Clock.instant = true;
 const DAYS = +process.argv[2] || 300, SEED = process.argv[3] != null ? +process.argv[3] : 12345;
@@ -44,6 +44,9 @@ function report(w) {
     console.log('  ' + pad(k, 18) + lpad(t, 6) + '  ' + Object.entries(intents[k]).sort((x, y) => y[1] - x[1]).map(([n, c]) => `${n} ${Math.round(c / t * 100)}`).join(', '));
   }
   const pl = [...w.agents.values()].filter(a => a.kind === 'pilot' && a.ctrl !== 'human');
+  const pirS = [...w.agents.values()].filter(a => a.faction === PIRATE).map(a => w.strength(a)).sort((x, y) => x - y);
+  const plS = pl.map(a => w.strength(a)).sort((x, y) => y - x);
+  console.log(`Развитие пилотов: ТУ кораблей ${pl.map(a => w.shipTier(a).toFixed(1)).sort().reverse().join(' ')}; сила лучших ${plS.slice(0, 3).map(Math.round).join('/')}, медиана ${Math.round(plS[Math.floor(plS.length / 2)])} (пират: медиана ${Math.round(pirS[Math.floor(pirS.length / 2)] || 0)})`);
   console.log('Гибели пилотов: ' + pl.map(a => a.deaths || 0).join(' ') + ` (всего ${U.sum(pl, a => a.deaths || 0)})`);
   const qs = w.quests || [];
   const byT = {};

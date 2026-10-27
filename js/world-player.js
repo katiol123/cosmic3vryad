@@ -301,31 +301,35 @@ Object.assign(World.prototype, {
     if (!pl.shipyard) return [];
     const makers = this.yardMakers(pl);
     if (cat === 'artifact') return pl.shipyard >= 4 ? itemsFor('artifact').filter((_, i) => (i + pl.id) % 4 === 0) : [];
-    return itemsFor(cat).filter(it => it.tier <= pl.shipyard && makers.includes(it.maker));
+    const t = this.yardTier(pl);
+    return itemsFor(cat).filter(it => it.tier <= t && makers.includes(it.maker));
   },
   shopHulls(pl) {
     if (!pl.shipyard) return [];
     const makers = this.yardMakers(pl);
-    return HULL_LIST.filter(h => h.tier <= pl.shipyard && makers.includes(h.maker));
+    const t = this.yardTier(pl);
+    return HULL_LIST.filter(h => h.tier <= t && makers.includes(h.maker));
   },
   shopPrice(x) { return Math.round(x.price * SHOP_K); },
   buyItem(cat, idx, id) {
     const p = this.player, it = ITEMS[id];
     const old = p.def.slots[cat][idx] ? ITEMS[p.def.slots[cat][idx]] : null;
-    const cost = this.shopPrice(it) - (old ? Math.round(this.shopPrice(old) * 0.5) : 0);
+    const cost = this.shopPrice(it) - (old ? this.sellValue(old.id, slotWear(p.def, cat, idx)) : 0);
     if (p.credits < cost) return 'Не хватает кредитов';
     if (defMass(p.def) - (old ? old.mass : 0) + it.mass > HULLS[p.def.hull].cap) return 'Не хватает вместимости корпуса';
     if (cat === 'artifact' && p.def.slots.artifact.includes(id)) return 'Такой артефакт уже установлен';
     p.credits -= cost;
     p.def.slots[cat][idx] = id;
+    setWear(p.def, cat, idx, 0);
     this.refreshKeep(p);
     return null;
   },
   sellItem(cat, idx) {
     const p = this.player, id = p.def.slots[cat][idx];
     if (!id) return;
-    p.credits += Math.round(this.shopPrice(ITEMS[id]) * 0.5);
+    p.credits += this.sellValue(id, slotWear(p.def, cat, idx));
     p.def.slots[cat][idx] = null;
+    setWear(p.def, cat, idx, 0);
     this.refreshKeep(p);
   },
   buyHull(hullId) {

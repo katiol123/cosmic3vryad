@@ -307,7 +307,7 @@ const GalaxyUI = {
         h('img', { class: 'pimg2', src: GFX.shipImage(p.def.hull, 0, 80) }),
         h('div', { class: 'fb' },
           h('div', { class: 'fn' }, p.name, p.member >= 0 ? h('span', { style: { color: w.factions[p.member].color } }, ` [${w.factions[p.member].short}]`) : h('span', { class: 'dim' }, ' [наёмник]')),
-          h('div', { class: 'fs' }, `${HULLS[p.def.hull].name} · 💰 ${Math.round(p.credits).toLocaleString('ru')} · ☠ ${p.kills}`),
+          h('div', { class: 'fs' }, `${HULLS[p.def.hull].name} · ТУ ${w.shipTier(p).toFixed(1)} · 💰 ${Math.round(p.credits).toLocaleString('ru')} · ☠ ${p.kills}`),
           h('div', { class: 'fs dim' }, (p.intent && p.ctrl !== 'human' ? '🧠 ' + p.intent + ' · ' : '') + this.taskText(p))));
       B.appendChild(row);
     }
@@ -337,7 +337,7 @@ const GalaxyUI = {
         const box = h('div', { class: 'gx-pl' },
           h('div', { class: 'pn' }, h('i', { class: 'pdot', style: { background: PLANET_TYPES[p.type].color } }), p.name,
             h('span', { style: { color: po ? po.color : '#888' } }, ' · ' + (p.pop > 0 ? (po ? po.short : 'независимая') : 'необитаема'))),
-          p.pop > 0 ? h('div', { class: 'fs' }, `${PLANET_TYPES[p.type].name} · 👥 ${p.pop.toFixed(1)} млн · стабильность ${Math.round(p.stability * 100)}% · оборона ${Math.round(p.defense)}${p.shipyard ? ' · верфь ТУ ' + U.roman(p.shipyard) : ''}`) : null);
+          p.pop > 0 ? h('div', { class: 'fs' }, `${PLANET_TYPES[p.type].name} · 👥 ${p.pop.toFixed(1)} млн · стабильность ${Math.round(p.stability * 100)}% · оборона ${Math.round(p.defense)}${p.shipyard ? ' · верфь ТУ ' + U.roman(w.yardTier(p)) : ''}`) : null);
         if (p.pop > 0) {
           const tbl = h('div', { class: 'prices' });
           for (const g of GOODS) {
@@ -359,7 +359,7 @@ const GalaxyUI = {
       B.appendChild(h('div', null,
         h('div', { class: 'ph' }, AGENT_KINDS[a.kind].icon + ' ' + w.who(a)),
         h('img', { class: 'gx-shipimg', src: GFX.shipImage(a.def.hull, a.faction === PIRATE ? 1 : 0, 160) }),
-        h('div', { class: 'fs' }, `${HULLS[a.def.hull].name} · корпус ${Math.round(a.hp)}/${a.maxHp} · щит ${st.maxShield}`),
+        h('div', { class: 'fs' }, `${HULLS[a.def.hull].name} · корпус ${Math.round(a.hp)}/${a.maxHp} · щит ${Math.round(st.maxShield)}${a.kind === 'pilot' ? ' · ТУ ' + w.shipTier(a).toFixed(1) : ''}${st.broken ? ' · сломано модулей: ' + st.broken : ''}`),
         h('div', { class: 'fs' }, `Задание: ${this.taskText(a)}`),
         h('div', { class: 'fs' }, `Скорость: ${Math.round(a.speed)} ед./день · трюм ${Math.round(w.cargoUsed(a))}/${a.cargoCap}`),
         a.kind === 'pilot' ? h('div', { class: 'fs' }, `Кредиты: ${Math.round(a.credits).toLocaleString('ru')} · уничтожено: ${a.kills} · ${a.member >= 0 ? 'служит: ' + w.factions[a.member].name : 'свободный наёмник'}`) : null,
