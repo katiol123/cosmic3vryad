@@ -542,3 +542,55 @@ select { background: rgba(10,16,36,.9); border: 1px solid var(--line); border-ra
   .gx-side { flex: none; max-height: none; }
   .mcard.wide { grid-template-columns: 1fr; }
 }
+
+/* ---------- Кампания: сектор ---------- */
+#scr-sector { background: #03050c; }
+.mcard .col { display: flex; flex-direction: column; gap: 8px; }
+.sx-title { font-size: 15px; }
+.sx-title b { font-family: var(--head); font-size: 18px; letter-spacing: 1px; margin-right: 8px; }
+.sx-map { position: relative; }
+.sx-cv { width: 100%; height: 100%; display: block; cursor: crosshair; touch-action: none; }
+.sx-hud { position: absolute; left: 10px; top: 10px; width: 300px; padding: 10px; display: flex; flex-direction: column; gap: 6px; background: rgba(8,13,30,.88); z-index: 4; }
+.hd-top { display: flex; gap: 10px; align-items: center; }
+.hd-top img { width: 70px; height: 40px; object-fit: contain; filter: drop-shadow(0 0 6px rgba(255,224,102,.5)); }
+.hd-name { font-family: var(--head); font-size: 15px; }
+.hd-sub { font-size: 11px; color: var(--dim); }
+.hd-cr { font-size: 13px; color: var(--gold); font-weight: 700; }
+.hd-row, .hd-task { font-size: 12px; color: #b8c6ea; }
+.hd-task { color: #ffe9a8; }
+.hd-battle { padding: 8px; border-radius: 9px; background: rgba(255,60,40,.12); border: 1px solid rgba(255,80,60,.5); font-size: 12.5px; display: flex; flex-direction: column; gap: 6px; animation: actPulse 1.5s ease-in-out infinite; }
+.sx-toasts { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 6; pointer-events: none; width: min(560px, 60%); }
+.sx-toast { background: rgba(8,13,30,.92); border: 1px solid var(--line2); border-radius: 10px; padding: 7px 12px; font-size: 13px; animation: cardIn .35s both; transition: opacity .5s, transform .5s; }
+.sx-toast.me { border-color: rgba(255,224,102,.6); color: #ffe9a8; }
+.sx-toast.bad { border-color: rgba(255,77,109,.6); color: #ffb3c1; }
+.sx-toast.out { opacity: 0; transform: translateY(-10px); }
+.sx-travel { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; pointer-events: none; opacity: 0; transition: opacity .5s;
+  background: radial-gradient(ellipse at center, rgba(40,20,90,.55), rgba(3,5,12,.85)); font-size: 16px; z-index: 3; }
+.sx-travel.show { opacity: 1; }
+.sx-travel .tv-title { font-family: var(--head); font-size: 38px; letter-spacing: 10px; color: #c7a8ff; text-shadow: 0 0 20px #7c4dff; animation: pausePulse 2s ease-in-out infinite; }
+.sx-travel .tv-days { color: var(--gold); }
+.sx-dock { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; z-index: 8; background: rgba(2,4,12,.55); padding: 16px; }
+.sx-dock.show { display: flex; animation: scrIn .35s both; }
+.dk { width: min(1000px, 100%); max-height: 100%; overflow: hidden; display: flex; flex-direction: column; background: rgba(8,13,30,.96); padding: 14px; gap: 10px; }
+.dk-head { display: flex; gap: 14px; align-items: center; }
+.dk-head h2 { margin: 0; font-family: var(--head); font-weight: 400; }
+.dk-planet { width: 96px; height: 96px; object-fit: contain; animation: spinSlow 60s linear infinite; }
+@keyframes spinSlow { to { transform: rotate(360deg); } }
+.dk-body { overflow-y: auto; flex: 1; min-height: 200px; }
+.mk-row { display: grid; grid-template-columns: 1.6fr .6fr .6fr .7fr .6fr 2.2fr; gap: 6px; align-items: center; padding: 5px 6px; border-radius: 7px; font-size: 13px; }
+.mk-row:nth-child(odd) { background: rgba(255,255,255,.03); }
+.mk-h { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+.mk-btns { display: flex; gap: 3px; flex-wrap: wrap; }
+.mk-btns .ibtn { width: auto; min-width: 30px; height: 26px; padding: 0 6px; font-size: 11px; }
+.mk .cheap { color: #7bd88f; font-weight: 700; } .mk .dear { color: #ff8fa3; font-weight: 700; }
+.yd { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.yd-col { min-width: 0; }
+.slot.sel { border-color: var(--gold); box-shadow: 0 0 10px rgba(255,224,102,.3); }
+.gauge.big { height: 24px; margin: 10px 0; }
+.sx-plimg { display: block; width: 110px; margin: 6px auto; }
+@media (max-width: 1000px) {
+  .sx-hud { position: static; width: auto; margin: 8px; }
+  .yd { grid-template-columns: 1fr; }
+  .mk-row { grid-template-columns: 1.3fr .5fr .5fr .6fr .5fr; }
+  .mk-btns { grid-column: 1 / -1; }
+}

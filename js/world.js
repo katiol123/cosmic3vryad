@@ -198,7 +198,7 @@ class World {
           id: this.planets.length, name: this.r() < 0.5 ? `${s.name} ${U.roman(k + 1)}` : syl(), sector: s.id, owner, type,
           pop: inhabited ? (isCap ? 8 + this.r() * 5 : 1 + this.r() * 5) : 0,
           stock: {}, price: {}, stability: 0.75 + this.r() * 0.15, defense: 0, maxDefense: 0,
-          shipyard: 0, orbit: 36 + k * 20 + this.r() * 6, angle: this.r() * Math.PI * 2, size: 0.6 + this.r() * 0.6,
+          shipyard: 0, orbit: 36 + k * 20 + this.r() * 6, angle: this.r() * Math.PI * 2, size: 0.6 + this.r() * 0.6, omega: 0.45 / Math.sqrt(36 + k * 20),
           shortage: 0,
         };
         if (isCap) { p.shipyard = 4; this.factions[s.owner].capital = p.id; }
@@ -813,11 +813,12 @@ class World {
       if (dmg > 1) { const cost = Math.min(a.credits, dmg * 2); a.credits -= cost; a.hp += cost / 2; }
       // покупка корабля получше
       if (dock.shipyard) {
-        const tier = Math.min(dock.shipyard, Math.max(1, Math.floor(Math.log2(a.credits / 2500 + 1)) + 1));
+        const tier = Math.min(dock.shipyard, Math.max(1, Math.floor(Math.log2(a.credits / 6000 + 1)) + 1));
         const curTier = Math.max(...defItems(a.def).map(i => i.tier), HULLS[a.def.hull].tier);
-        if (tier > curTier && a.credits > 9000 * tier) {
+        if (tier > curTier) {
           const nd = this.designShip('pilot', this.memberOf(a), tier);
-          const cost = defPrice(nd) - defPrice(a.def) * 0.6;
+          const K = typeof SHOP_K !== 'undefined' ? SHOP_K : 12;
+          const cost = (defPrice(nd) - defPrice(a.def) * 0.5) * K;
           if (cost < a.credits * 0.8) {
             a.credits -= Math.max(0, cost);
             nd.name = a.name;
@@ -930,6 +931,9 @@ class World {
   hostile(a, b) {
     if (a.faction === PIRATE) return b.faction !== PIRATE;
     if (b.faction === PIRATE) return true;
+    // пилот с очень плохой репутацией у фракции — её враг
+    if (a.kind === 'pilot' && b.faction >= 0 && (a.rep[b.faction] || 0) <= -50) return true;
+    if (b.kind === 'pilot' && a.faction >= 0 && (b.rep[a.faction] || 0) <= -50) return true;
     const fa = this.memberOf(a), fb = this.memberOf(b);
     if (fa >= 0 && fb >= 0) return this.atWar(fa, fb);
     return false;
@@ -983,11 +987,17 @@ class World {
     return -1;
   }
 
-  entry(a) { return { def: a.def, hp: a.hp, shield: a.shield, ref: a.id, ctrl: a.ctrl === 'human' ? 'human' : 'ai', diff: 'normal' }; }
+  entry(a) { return { def: a.def, name: a.faction === PIRATE ? a.name : a.kind === 'pilot' ? a.name : a.def.name, hp: a.hp, shield: a.shield, ref: a.id, ctrl: a.ctrl === 'human' ? 'human' : 'ai', diff: 'normal' }; }
 
   startBattle(sid, sideA, sideB) {
+    // сторона игрока — всегда «синие»
+    if (sideB.some(a => a.ctrl === 'human')) [sideA, sideB] = [sideB, sideA];
     const b = new Battle({ fleets: [{ ctrl: 'ai', ships: sideA.map(a => this.entry(a)) }, { ctrl: 'ai', ships: sideB.map(a => this.entry(a)) }], maxRounds: 45 });
     const wb = { id: this.nextId++, sector: sid, b, day: this.day, title: `${this.who(sideA[0])} против ${this.who(sideB[0])}` };
+    const all = sideA.concat(sideB).filter(a => a.sx != null);
+    wb.sx = all.length ? U.sum(all, a => a.sx) / all.length : 0;
+    wb.sy = all.length ? U.sum(all, a => a.sy) / all.length : 0;
+    for (const a of sideA.concat(sideB)) a.chase = null;
     for (const a of [...sideA, ...sideB]) { a.battle = wb.id; a.wait = 0; }
     this.battles.push(wb);
     this.stats.battles++;
@@ -1000,7 +1010,7 @@ class World {
 
   encounters() {
     for (const s of this.sectors) {
-      const here = this.present(s.id);
+      const here = this.present(s.id).filter(a => a.docked == null);
       if (here.length < 1) continue;
       // подкрепления в идущие бои
       for (const wb of this.battles.filter(x => x.sector === s.id && !x.b.over)) {
@@ -1017,10 +1027,12 @@ class World {
       }
       // новые нападения
       for (const A of U.shuffle(here.slice())) {
-        if (A.battle) continue;
+        if (A.battle || A.chase) continue;
         const targets = here.filter(B => B !== A && !B.battle && this.wantsAttack(A, B, here));
         if (!targets.length) continue;
         const B = targets.sort((x, y) => this.cargoValue(y) - this.cargoValue(x))[0];
+        // на игрока сначала заходят на перехват — бой начнётся, когда догонят
+        if (B.ctrl === 'human') { if (!A.chase) { A.chase = B.id; this.log(`⚠ ${this.who(A)} идёт на перехват!`, 'player', { s: s.id }); } continue; }
         // кто ещё в секторе поддержит каждую сторону
         const sideA = [A], sideB = [B];
         for (const N of here) {
@@ -1038,8 +1050,17 @@ class World {
     Clock.instant = true;
     for (const wb of this.battles) {
       if (wb.b.over) continue;
-      if (wb.live) continue; // бой, который сейчас смотрит игрок, идёт своим чередом
-      await wb.b.advance(wb.b.roundLen * BATTLE_ROUNDS_PER_DAY);
+      const dt = wb.b.roundLen * BATTLE_ROUNDS_PER_DAY;
+      const human = wb.b.ships.some(sh => sh.alive && sh.ctrl === 'human');
+      if (human && this.hooks && this.hooks.liveBattle) {
+        // бой игрока проходит на экране боя: игрок сам собирает блоки
+        Clock.instant = false;
+        await this.hooks.liveBattle(wb, dt);
+        Clock.instant = true;
+      } else {
+        if (human) wb.b.ships.forEach(sh => { if (sh.ctrl === 'human') sh.ctrl = 'ai'; });
+        await wb.b.advance(dt);
+      }
       this.syncBattle(wb);
       if (!wb.b.over) this.retreats(wb);
     }
@@ -1131,6 +1152,7 @@ class World {
     }
     if (killer) {
       killer.kills++;
+      if (killer.ctrl === 'human' && this.onPlayerKill) this.onPlayerKill(a);
       if (killer.faction === PIRATE) killer.loot += this.cargoValue(a) * 0.8 + a.price * 0.1 + (a.kind === 'pilot' ? a.credits * 0.3 : 0);
       if (a.faction === PIRATE) {
         this.stats.pirateKills++;
@@ -1155,13 +1177,21 @@ class World {
       if (home) {
         const np = this.spawn('pilot', FREE, home.sector, { name: a.name, credits: credits + 1500, personality: a.personality, rep: a.rep, member: a.member, kills: a.kills, ctrl: a.ctrl });
         np.rep = a.rep;
-        if (a.ctrl === 'human') this.player = np;
+        if (a.ctrl === 'human') {
+          this.player = np;
+          np.docked = home.id; np.target = null; np.route = null;
+          [np.sx, np.sy] = this.planetPos ? this.planetPos(home) : [0, 0];
+          np.def = (() => { const H = U.pick(HULL_LIST.filter(h => h.cls === 'fighter' && h.tier === 1)); const d = emptyDef(H.id, a.name); autoFill(d, 1); d.slots.weapon = d.slots.weapon.map((w, i) => (i < 2 ? w : null)); return d; })();
+          np.hp = null; np.shield = null; this.refresh(np);
+          this.log(`★ Спасательная капсула доставила вас на ${home.name}. Страховка выдала новый корабль.`, 'player', { s: home.sector });
+        }
       }
     }
   }
 
   who(a) {
     if (!a) return 'неизвестный';
+    if (a.ctrl === 'human') return `${a.name} (вы)`;
     if (a.kind === 'pilot') return `${a.name}${a.member >= 0 ? ' [' + this.factions[a.member].short + ']' : ''}`;
     if (a.faction === PIRATE) return `пират ${a.name}`;
     const f = this.factions[a.faction];
@@ -1176,13 +1206,19 @@ class World {
       if (!a.alive || a.battle) continue;
       if (a.travel) {
         a.travel.left--;
-        if (a.travel.left <= 0) { a.loc = a.travel.to; a.travel = null; this.sectors[a.loc].traffic += NONCOMBAT.includes(a.kind) ? 1 : 0.3; }
+        if (a.travel.left <= 0) { a.loc = a.travel.to; a.arrFrom = a.travel.from; a.justArrived = true; a.travel = null; this.sectors[a.loc].traffic += NONCOMBAT.includes(a.kind) ? 1 : 0.3; }
         continue;
       }
       // вне боя щит восстанавливается, дроид понемногу чинит
       a.shield = a.s.maxShield;
       a.hp = Math.min(a.maxHp, a.hp + (a.s.rPass || 0) * 4);
       if (a.ctrl === 'human') continue; // игрок решает сам
+      // преследователь не бросает погоню, пока цель в секторе
+      if (a.chase) {
+        const t = this.agents.get(a.chase);
+        if (t && t.alive && t.loc === a.loc && !t.travel && t.docked == null && !t.battle) continue;
+        a.chase = null;
+      }
       if (a.wait > 0) { a.wait--; continue; }
       if (a.dest != null && a.dest !== a.loc) { this.depart(a); continue; }
       this.think(a);
@@ -1206,8 +1242,12 @@ class World {
     for (const f of this.factions) this.factionAI(f);
     this.pirateAI();
     this.movement();
+    if (this.player) this.playerMove();
+    this.updateLocal();
     this.encounters();
+    if (this.player) this.chaseCheck();
     await this.battlesStep();
+    if (this.player) this.missionsTick();
     this.day++;
   }
 

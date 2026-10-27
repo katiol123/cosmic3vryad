@@ -19,7 +19,8 @@ const GalaxyUI = {
   dpr: 1,
 
   open(newWorld) {
-    if (newWorld || !this.world) this.world = new World({ seed: Math.floor(Math.random() * 1e9) });
+    this.pilotMode = false;
+    if (newWorld || !this.world || this.world.player) this.world = new World({ seed: Math.floor(Math.random() * 1e9) });
     this.build();
     Screens.show('scr-galaxy');
     this.active = true;
@@ -39,7 +40,13 @@ const GalaxyUI = {
     E.day = h('div', { class: 'gx-day' });
     E.play = h('button', { class: 'btn', onclick: () => this.togglePlay() }, '▶ Авто');
     const speed = seg([[0.7, '½'], [1.5, '1×'], [4, '3×'], [10, '8×']], this.daysPerSec, v => { this.daysPerSec = v; }, 'small');
-    el.appendChild(h('div', { class: 'topbar' },
+    el.appendChild(this.pilotMode ? h('div', { class: 'topbar' },
+      h('button', { class: 'btn primary', onclick: () => SectorUI.backFromGalaxy() }, '↩ В сектор'),
+      h('h2', null, 'Карта галактики'),
+      E.day,
+      h('div', { class: 'grow' }),
+      h('span', { class: 'dim' }, 'Выберите сектор и проложите курс — корабль полетит через гиперворота сам'),
+      h('button', { class: 'btn', onclick: () => SectorUI.nextDay().then(() => this.refresh()) }, '⏭ Ход')) : h('div', { class: 'topbar' },
       h('button', { class: 'btn ghost', onclick: () => this.close() }, '← Меню'),
       h('h2', null, 'Галактика'),
       E.day,
@@ -311,6 +318,17 @@ const GalaxyUI = {
       const s = w.sectors[S.id];
       const own = s.owner >= 0 ? w.factions[s.owner] : null;
       B.appendChild(h('div', { class: 'ph' }, s.name, h('span', { style: { color: own ? own.color : '#aaa' } }, ' · ' + (own ? own.short : 'ничейный'))));
+      if (this.pilotMode && w.player) {
+        const p = w.player, here = p.loc === s.id;
+        const from = p.loc != null ? p.loc : p.travel ? p.travel.to : null;
+        B.appendChild(here ? h('div', { class: 'fs gold' }, 'Вы здесь') : h('div', null,
+          h('div', { class: 'fs' }, from != null ? `Прыжков: ${w.hops(from, s.id)}` : ''),
+          h('button', { class: 'btn primary', onclick: () => {
+            p.route = s.id;
+            if (p.loc != null && !p.battle) { w.undock(); p.target = { type: 'gate', to: w.N[p.loc][s.id] }; }
+            SectorUI.backFromGalaxy();
+          } }, '🧭 Проложить курс сюда')));
+      }
       if (s.base) { const b = w.bases.find(x => x.id === s.base); if (b) B.appendChild(h('div', { class: 'gx-base' }, `☠ Пиратская база «${b.name}»: богатство ${Math.round(b.wealth)}, оборона ${Math.round(b.defense)}`)); }
       for (const pid of s.planets) {
         const p = w.planets[pid];
@@ -476,6 +494,26 @@ const GalaxyUI = {
           }
           ctx.stroke(); ctx.setLineDash([]);
         }
+      }
+    }
+    // игрок и его маршрут
+    if (w.player && w.player.alive) {
+      const p = w.player;
+      const pos = this.calcPos(p);
+      if (pos) {
+        const [x, y] = S(pos[0], pos[1]);
+        if (p.route != null) {
+          let cur = p.travel ? p.travel.to : p.loc, guard = 0;
+          ctx.strokeStyle = 'rgba(255,224,102,0.8)'; ctx.lineWidth = 2.5 * d; ctx.setLineDash([8 * d, 6 * d]);
+          ctx.beginPath(); ctx.moveTo(x, y);
+          while (cur != null && guard++ < 30) { const [sx2, sy2] = S(w.sectors[cur].x, w.sectors[cur].y); ctx.lineTo(sx2, sy2); if (cur === p.route) break; cur = w.N[cur][p.route]; }
+          ctx.stroke(); ctx.setLineDash([]);
+        }
+        const pr = (10 + 4 * Math.sin(this.t * 4)) * d;
+        ctx.strokeStyle = '#ffe066'; ctx.lineWidth = 2.5 * d;
+        ctx.beginPath(); ctx.arc(x, y, pr, 0, Math.PI * 2); ctx.stroke();
+        ctx.font = `800 ${11 * d}px "Exo 2", sans-serif`; ctx.fillStyle = '#ffe066'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        ctx.fillText('ВЫ', x, y - pr - 2 * d);
       }
     }
     // бои

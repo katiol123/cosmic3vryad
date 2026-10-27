@@ -117,11 +117,27 @@ const Menu = {
     const camp = h('div', { class: 'mcard wide camp' },
       h('div', { class: 'mcard-ico' }, '🌌'),
       h('div', null,
-        h('h3', null, 'Кампания: живая галактика ', h('span', { class: 'beta' }, 'наблюдение')),
-        h('p', null, '30 секторов, 12 фракций, пиратские базы. Торговцы, дипломаты, патрули, военные флоты и свободные пилоты-наёмники летают с миссиями; бои длятся несколько дней, к ним присоединяются подкрепления. Мир живёт пошагово по дням.')),
-      h('button', { class: 'btn primary big', onclick: () => GalaxyUI.open(false) }, 'Открыть галактику'));
+        h('h3', null, 'Кампания: рейнджер ', h('span', { class: 'beta' }, 'бета')),
+        h('p', null, 'Вы — свободный пилот-наёмник в живой галактике: 30 секторов, 12 фракций, пиратские базы. Торгуйте, выполняйте задания, охотьтесь на пиратов, улучшайте корабль, поступайте на службу фракциям. Мир живёт пошагово по дням; бои длятся несколько дней, и к ним присоединяются другие корабли.')),
+      h('div', { class: 'col' },
+        SectorUI.world ? h('button', { class: 'btn primary big', onclick: () => SectorUI.open() }, '▶ Продолжить') : null,
+        h('button', { class: 'btn primary big', onclick: () => Menu.newGame() }, '★ Новая игра'),
+        h('button', { class: 'btn', onclick: () => GalaxyUI.open(false) }, '👁 Наблюдать за галактикой')));
     el.append(parade, h('div', { class: 'menu-inner' }, logo, h('div', { class: 'mcards' }, custom, rnd, camp), foot));
   },
+};
+
+Menu.newGame = function () {
+  const inp = h('input', { class: 'name-in', value: U.pick(PILOT_FIRST) + ' ' + U.pick(PILOT_LAST), maxlength: 24 });
+  const box = Modal.open(h('div', { class: 'confirm' },
+    h('h2', null, 'Новый рейнджер'),
+    h('p', null, 'Вы начинаете свободным наёмником на скромном корабле с 4000 кредитов. Галактика создаётся заново.'),
+    h('div', null, inp),
+    h('div', { class: 'row' },
+      h('button', { class: 'btn', onclick: () => Modal.close() }, 'Отмена'),
+      h('button', { class: 'btn primary big', onclick: () => { Modal.close(); SectorUI.newGame(inp.value.trim() || 'Рейнджер'); } }, 'В путь!'))));
+  setTimeout(() => inp.focus(), 50);
+  return box;
 };
 
 // ---------- Подготовка флотов ----------

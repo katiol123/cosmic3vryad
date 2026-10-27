@@ -62,6 +62,7 @@ class Battle {
     if (e.hp != null) sh.hp = Math.max(1, Math.min(sh.s.maxHp, e.hp));
     if (e.shield != null) sh.shield = Math.min(sh.s.maxShield, e.shield);
     sh.ref = e.ref || null;
+    if (e.name) sh.name = e.name;
     sh.board.onEvent = ev => this.hook('boardEvent', sh, ev);
     this.ships.push(sh);
     return sh;

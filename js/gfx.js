@@ -386,3 +386,118 @@ const GFX = {
     return cv;
   },
 };
+
+// ---------- Планеты, станции, ворота (кампания) ----------
+Object.assign(GFX, {
+  PLANET_LOOK: {
+    agri:    { base: ['#2f7d4a', '#3fa35e', '#1f5fa8'], cloud: 0.5, lights: 0.1 },
+    mining:  { base: ['#7a5638', '#a0714a', '#5c4030'], crater: true, lights: 0.15 },
+    indust:  { base: ['#5d636e', '#7c828c', '#3d4249'], lights: 0.9, cloud: 0.2 },
+    tech:    { base: ['#1d4f8a', '#2f7fc8', '#9fd0ff'], lights: 0.7, cloud: 0.4 },
+    resort:  { base: ['#1a8a9a', '#2fc4c0', '#f2d7a0'], cloud: 0.6, lights: 0.3 },
+    capital: { base: ['#2a4d8f', '#e0b04a', '#3b74c4'], lights: 1, cloud: 0.35, ring: true },
+    dead:    { base: ['#6b6670', '#8a8590', '#4a4650'], crater: true },
+    gas:     { base: ['#9a6bc4', '#d8a06a', '#6b4a9a'], bands: true, ring: 0.4 },
+  },
+  planet(p, px) {
+    const key = `pl${p.id}_${px}_${p.pop > 0 ? 1 : 0}`;
+    if (GFX.cache.has(key)) return GFX.cache.get(key);
+    const rnd = U.seeded(p.id * 7919 + 13);
+    const look = p.pop > 0 ? GFX.PLANET_LOOK[p.type] : (rnd() < 0.45 ? GFX.PLANET_LOOK.gas : GFX.PLANET_LOOK.dead);
+    const R = px / 2, pad = look.ring ? R * 0.9 : R * 0.35;
+    const cv = GFX.canvas(px + pad * 2, px + pad * 2), ctx = cv.getContext('2d');
+    const cx = cv.width / 2, cy = cv.height / 2;
+    const ringTilt = 0.32;
+    const drawRing = front => {
+      if (!look.ring || (look.ring !== true && rnd() > look.ring && !front)) return;
+      ctx.save();
+      ctx.beginPath();
+      if (front) ctx.rect(0, cy, cv.width, cv.height); else ctx.rect(0, 0, cv.width, cy);
+      ctx.clip();
+      for (let i = 0; i < 4; i++) {
+        ctx.strokeStyle = `rgba(230,210,170,${0.18 + i * 0.06})`;
+        ctx.lineWidth = R * 0.07;
+        ctx.beginPath(); ctx.ellipse(cx, cy, R * (1.35 + i * 0.12), R * (1.35 + i * 0.12) * ringTilt, -0.25, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+    };
+    drawRing(false);
+    // атмосфера
+    const atm = ctx.createRadialGradient(cx, cy, R * 0.9, cx, cy, R * 1.3);
+    atm.addColorStop(0, U.rgba(look.base[2], 0.5)); atm.addColorStop(1, U.rgba(look.base[2], 0));
+    ctx.fillStyle = atm; ctx.beginPath(); ctx.arc(cx, cy, R * 1.3, 0, Math.PI * 2); ctx.fill();
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+    const g = ctx.createRadialGradient(cx - R * 0.3, cy - R * 0.3, R * 0.1, cx, cy, R);
+    g.addColorStop(0, U.shade(look.base[1], 0.25)); g.addColorStop(0.6, look.base[0]); g.addColorStop(1, U.shade(look.base[0], -0.5));
+    ctx.fillStyle = g; ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+    if (look.bands) {
+      for (let i = 0; i < 9; i++) {
+        ctx.fillStyle = U.rgba(i % 2 ? look.base[1] : look.base[2], 0.35);
+        const y = cy - R + (i + rnd() * 0.5) * R * 0.22;
+        ctx.beginPath(); ctx.ellipse(cx, y, R * 1.2, R * (0.05 + rnd() * 0.06), 0, 0, Math.PI * 2); ctx.fill();
+      }
+    } else {
+      // континенты / пятна
+      for (let i = 0; i < 14; i++) {
+        ctx.fillStyle = U.rgba(rnd() < 0.5 ? look.base[1] : look.base[2], 0.45);
+        ctx.beginPath(); ctx.arc(cx + (rnd() - 0.5) * R * 1.8, cy + (rnd() - 0.5) * R * 1.8, R * (0.12 + rnd() * 0.35), 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    if (look.crater) for (let i = 0; i < 12; i++) {
+      const x = cx + (rnd() - 0.5) * R * 1.7, y = cy + (rnd() - 0.5) * R * 1.7, r = R * (0.04 + rnd() * 0.1);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1; ctx.stroke();
+    }
+    if (look.cloud) for (let i = 0; i < 10; i++) {
+      ctx.fillStyle = `rgba(255,255,255,${look.cloud * 0.25})`;
+      ctx.beginPath(); ctx.ellipse(cx + (rnd() - 0.5) * R * 1.8, cy + (rnd() - 0.5) * R * 1.8, R * (0.2 + rnd() * 0.3), R * 0.06, rnd() - 0.5, 0, Math.PI * 2); ctx.fill();
+    }
+    // терминатор: ночная сторона
+    const sh = ctx.createLinearGradient(cx - R, cy - R * 0.6, cx + R, cy + R * 0.6);
+    sh.addColorStop(0, 'rgba(0,0,0,0)'); sh.addColorStop(0.55, 'rgba(0,0,10,0.15)'); sh.addColorStop(1, 'rgba(0,0,10,0.85)');
+    ctx.fillStyle = sh; ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+    // огни городов на ночной стороне
+    if (look.lights && p.pop > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 60 * look.lights; i++) {
+        const a = rnd() * Math.PI * 2, rr = Math.sqrt(rnd()) * R * 0.95;
+        const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+        if ((x - cx) * 0.8 + (y - cy) * 0.5 < R * 0.15) continue;
+        ctx.fillStyle = `rgba(255,${200 + rnd() * 55 | 0},120,${0.4 + rnd() * 0.5})`;
+        ctx.fillRect(x, y, Math.max(1, R * 0.03), Math.max(1, R * 0.03));
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    ctx.restore();
+    // блик атмосферы
+    ctx.strokeStyle = U.rgba(look.base[2], 0.55); ctx.lineWidth = Math.max(1, R * 0.04);
+    ctx.beginPath(); ctx.arc(cx, cy, R, Math.PI * 0.9, Math.PI * 1.6); ctx.stroke();
+    drawRing(true);
+    const res = { canvas: cv, R };
+    GFX.cache.set(key, res);
+    return res;
+  },
+  station(px, hostile = true) {
+    const key = `st${px}_${hostile}`;
+    if (GFX.cache.has(key)) return GFX.cache.get(key);
+    const cv = GFX.canvas(px, px), ctx = cv.getContext('2d'), c = px / 2;
+    const col = hostile ? '#ff3b3b' : '#4cc9f0';
+    ctx.translate(c, c);
+    for (let i = 0; i < 8; i++) {
+      ctx.save(); ctx.rotate(i * Math.PI / 4);
+      ctx.fillStyle = '#2a2d36'; ctx.fillRect(c * 0.25, -c * 0.06, c * 0.68, c * 0.12);
+      ctx.fillStyle = col; ctx.fillRect(c * 0.86, -c * 0.04, c * 0.08, c * 0.08);
+      ctx.restore();
+    }
+    const g = ctx.createRadialGradient(-c * 0.1, -c * 0.1, 1, 0, 0, c * 0.42);
+    g.addColorStop(0, '#6a6f7c'); g.addColorStop(1, '#16181e');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, c * 0.42, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = U.rgba(col, 0.8); ctx.lineWidth = c * 0.05;
+    ctx.beginPath(); ctx.arc(0, 0, c * 0.3, 0, Math.PI * 2); ctx.stroke();
+    ctx.font = `${c * 0.36}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = col; ctx.fillText(hostile ? '☠' : '✦', 0, c * 0.02);
+    GFX.cache.set(key, cv);
+    return cv;
+  },
+});
