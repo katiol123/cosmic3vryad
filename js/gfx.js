@@ -350,6 +350,146 @@ const GFX = {
     return url;
   },
 
+  // ---------- Иконки товаров и модулей (dataURL, с кэшем) ----------
+  TIER_COL: ['#9aa6bf', '#7bd88f', '#4cc9f0', '#c77dff', '#ffd166'],
+  // общий фон-плашка иконки
+  iconBase(ctx, s, col, frame) {
+    const g = ctx.createRadialGradient(s * 0.4, s * 0.35, s * 0.05, s / 2, s / 2, s * 0.62);
+    g.addColorStop(0, GFX.mix(col, '#ffffff', 0.25) + '55'); g.addColorStop(1, '#0a1022');
+    ctx.fillStyle = g; ctx.beginPath(); GFX.roundRect(ctx, 1, 1, s - 2, s - 2, s * 0.2); ctx.fill();
+    ctx.lineWidth = Math.max(1, s * 0.05); ctx.strokeStyle = frame || GFX.mix(col, '#000000', 0.2);
+    ctx.beginPath(); GFX.roundRect(ctx, 1.5, 1.5, s - 3, s - 3, s * 0.2); ctx.stroke();
+  },
+  glow(ctx, col, b) { ctx.shadowColor = col; ctx.shadowBlur = b; },
+  goodIcon(g, px = 48) {
+    const key = `good_${g}_${px}`;
+    if (GFX.cache.has(key)) return GFX.cache.get(key);
+    const s = px, cv = GFX.canvas(s, s), ctx = cv.getContext('2d');
+    const P = {
+      food: '#7bd88f', ore: '#b08968', fuel: '#ff9f1c', metal: '#c0c8d8', tech: '#4cc9f0', meds: '#ff4d6d', arms: '#ffd166', lux: '#c77dff',
+    };
+    const col = P[g] || '#9aa6bf', c = s / 2;
+    GFX.iconBase(ctx, s, col);
+    ctx.save(); ctx.translate(c, c);
+    const k = s / 48;
+    ctx.lineJoin = 'round'; ctx.lineWidth = 1.6 * k;
+    GFX.glow(ctx, col, 8 * k);
+    if (g === 'food') {           // ящик с колосом
+      ctx.fillStyle = '#6b4f2a'; ctx.fillRect(-13 * k, -2 * k, 26 * k, 15 * k);
+      ctx.strokeStyle = '#3b2a14'; ctx.strokeRect(-13 * k, -2 * k, 26 * k, 15 * k);
+      ctx.strokeStyle = col; ctx.lineWidth = 2.2 * k;
+      for (const dx of [-6, 0, 6]) { ctx.beginPath(); ctx.moveTo(dx * k, -2 * k); ctx.lineTo(dx * k, -16 * k); ctx.stroke();
+        for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.ellipse((dx - 2) * k, (-14 + i * 4) * k, 1.8 * k, 3 * k, -0.5, 0, 6.3); ctx.ellipse((dx + 2) * k, (-14 + i * 4) * k, 1.8 * k, 3 * k, 0.5, 0, 6.3); ctx.fillStyle = col; ctx.fill(); } }
+    } else if (g === 'ore') {     // глыба руды с вкраплениями
+      ctx.fillStyle = '#5c4636'; ctx.beginPath();
+      [[-14, 6], [-10, -8], [0, -14], [12, -7], [14, 6], [4, 13], [-8, 12]].forEach(([x, y], i) => i ? ctx.lineTo(x * k, y * k) : ctx.moveTo(x * k, y * k));
+      ctx.closePath(); ctx.fill(); ctx.strokeStyle = col; ctx.stroke();
+      ctx.fillStyle = '#ffcf7a'; for (const [x, y] of [[-5, -3], [5, 2], [-2, 7], [7, -6]]) { ctx.beginPath(); ctx.arc(x * k, y * k, 2 * k, 0, 6.3); ctx.fill(); }
+    } else if (g === 'fuel') {    // канистра с каплей
+      ctx.fillStyle = '#c75000'; ctx.beginPath(); GFX.roundRect(ctx, -11 * k, -12 * k, 22 * k, 26 * k, 4 * k); ctx.fill();
+      ctx.fillStyle = '#ff9f1c'; ctx.beginPath(); GFX.roundRect(ctx, -4 * k, -17 * k, 8 * k, 6 * k, 2 * k); ctx.fill();
+      ctx.fillStyle = '#ffe8c2'; ctx.beginPath(); ctx.moveTo(0, -6 * k); ctx.quadraticCurveTo(7 * k, 3 * k, 0, 8 * k); ctx.quadraticCurveTo(-7 * k, 3 * k, 0, -6 * k); ctx.fill();
+    } else if (g === 'metal') {   // слитки
+      const bar = (x, y) => { ctx.fillStyle = '#9aa6bf'; ctx.beginPath(); ctx.moveTo((x - 9) * k, (y + 5) * k); ctx.lineTo((x - 6) * k, (y - 3) * k); ctx.lineTo((x + 6) * k, (y - 3) * k); ctx.lineTo((x + 9) * k, (y + 5) * k); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#e8edf7'; ctx.fillRect((x - 5) * k, (y - 3) * k, 10 * k, 2 * k); };
+      bar(-7, 9); bar(7, 9); bar(0, 1);
+    } else if (g === 'tech') {    // микросхема
+      ctx.fillStyle = '#123a52'; ctx.beginPath(); GFX.roundRect(ctx, -11 * k, -11 * k, 22 * k, 22 * k, 3 * k); ctx.fill(); ctx.strokeStyle = col; ctx.stroke();
+      ctx.strokeStyle = col; for (let i = -1; i <= 1; i++) for (const sd of [-1, 1]) { ctx.beginPath(); ctx.moveTo(i * 6 * k, sd * 11 * k); ctx.lineTo(i * 6 * k, sd * 16 * k); ctx.moveTo(sd * 11 * k, i * 6 * k); ctx.lineTo(sd * 16 * k, i * 6 * k); ctx.stroke(); }
+      ctx.fillStyle = col; ctx.beginPath(); GFX.roundRect(ctx, -5 * k, -5 * k, 10 * k, 10 * k, 2 * k); ctx.fill();
+    } else if (g === 'meds') {    // аптечка
+      ctx.fillStyle = '#f2f4f8'; ctx.beginPath(); GFX.roundRect(ctx, -13 * k, -9 * k, 26 * k, 21 * k, 4 * k); ctx.fill();
+      ctx.fillStyle = '#9aa6bf'; ctx.fillRect(-5 * k, -13 * k, 10 * k, 4 * k);
+      ctx.fillStyle = col; ctx.fillRect(-2.5 * k, -5 * k, 5 * k, 13 * k); ctx.fillRect(-6.5 * k, -1 * k, 13 * k, 5 * k);
+    } else if (g === 'arms') {    // оружейный ящик с патронами
+      ctx.fillStyle = '#3d4a2a'; ctx.fillRect(-14 * k, -2 * k, 28 * k, 14 * k);
+      ctx.fillStyle = col; for (let i = 0; i < 4; i++) ctx.fillRect((-13 + i * 7) * k, -2 * k, 3 * k, 14 * k);
+      ctx.fillStyle = '#d9a441'; for (const x of [-7, -2, 3, 8]) { ctx.fillRect((x - 1.5) * k, -14 * k, 3 * k, 10 * k); ctx.beginPath(); ctx.arc(x * k, -14 * k, 1.5 * k, Math.PI, 0); ctx.fill(); }
+    } else {                      // роскошь: огранённый кристалл
+      ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(0, -15 * k); ctx.lineTo(12 * k, -4 * k); ctx.lineTo(0, 15 * k); ctx.lineTo(-12 * k, -4 * k); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.moveTo(0, -15 * k); ctx.lineTo(5 * k, -4 * k); ctx.lineTo(0, 15 * k); ctx.lineTo(-5 * k, -4 * k); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+    const url = cv.toDataURL(); GFX.cache.set(key, url); return url;
+  },
+  itemIcon(it, px = 48) {
+    const key = `item_${it.id}_${px}`;
+    if (GFX.cache.has(key)) return GFX.cache.get(key);
+    const s = px, cv = GFX.canvas(s, s), ctx = cv.getContext('2d'), k = s / 48;
+    const CAT = { weapon: '#ff6b6b', shield: '#4cc9f0', engine: '#ff9f1c', reactor: '#ffe066', arsenal: '#d9a441', droid: '#7bd88f', computer: '#2ee6c9', radar: '#9cc3ff', ew: '#c77dff', armor: '#b8c2d6', artifact: '#ff7af5' };
+    const col = it.cat === 'weapon' && it.dt && DMG[it.dt] ? DMG[it.dt].color : CAT[it.cat] || '#9aa6bf';
+    GFX.iconBase(ctx, s, col, GFX.TIER_COL[(it.tier || 1) - 1]);
+    ctx.save(); ctx.translate(s / 2, s / 2); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    GFX.glow(ctx, col, 8 * k); ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 2.4 * k;
+    switch (it.cat) {
+      case 'weapon': {             // орудие по диагонали: корпус, ствол цвета урона и разряд
+        const kind = it.res === 'ammo' ? 'ammo' : it.res === 'data' ? 'data' : 'energy';
+        ctx.save(); ctx.rotate(-Math.PI / 4);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = GFX.mix(col, '#1a2236', 0.55); ctx.beginPath(); GFX.roundRect(ctx, -17 * k, -6 * k, 14 * k, 12 * k, 3 * k); ctx.fill();
+        ctx.fillStyle = GFX.mix(col, '#ffffff', 0.15);
+        if (kind === 'ammo') { ctx.fillRect(-4 * k, -4.5 * k, 14 * k, 3.5 * k); ctx.fillRect(-4 * k, 1 * k, 14 * k, 3.5 * k); }
+        else { ctx.beginPath(); GFX.roundRect(ctx, -4 * k, -3 * k, 15 * k, 6 * k, 3 * k); ctx.fill(); ctx.fillStyle = '#fff'; ctx.fillRect(0, -1 * k, 10 * k, 2 * k); }
+        GFX.glow(ctx, col, 10 * k);
+        ctx.fillStyle = col;
+        if (kind === 'data') { ctx.beginPath(); ctx.arc(14 * k, 0, 4 * k, 0, 6.3); ctx.fill(); ctx.strokeStyle = col; ctx.lineWidth = 1.4 * k; ctx.beginPath(); ctx.arc(14 * k, 0, 7 * k, -1, 1); ctx.stroke(); }
+        else { ctx.beginPath(); ctx.moveTo(10 * k, 0); ctx.lineTo(19 * k, -5 * k); ctx.lineTo(16 * k, 0); ctx.lineTo(19 * k, 5 * k); ctx.closePath(); ctx.fill(); }
+        ctx.restore(); break;
+      }
+      case 'shield': {             // шестигранный купол
+        ctx.beginPath(); for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3 + Math.PI / 6; ctx[i ? 'lineTo' : 'moveTo'](Math.cos(a) * 15 * k, Math.sin(a) * 15 * k); } ctx.closePath(); ctx.stroke();
+        ctx.globalAlpha = 0.35; ctx.fill(); ctx.globalAlpha = 1;
+        ctx.beginPath(); ctx.arc(0, 0, 6 * k, 0, 6.3); ctx.fill(); break;
+      }
+      case 'engine': {             // сопло и пламя
+        ctx.fillStyle = '#6c7893'; ctx.beginPath(); ctx.moveTo(-4 * k, -12 * k); ctx.lineTo(4 * k, -12 * k); ctx.lineTo(9 * k, 2 * k); ctx.lineTo(-9 * k, 2 * k); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(-8 * k, 3 * k); ctx.quadraticCurveTo(0, 22 * k, 8 * k, 3 * k); ctx.fill();
+        ctx.fillStyle = '#fff4d6'; ctx.beginPath(); ctx.moveTo(-4 * k, 3 * k); ctx.quadraticCurveTo(0, 13 * k, 4 * k, 3 * k); ctx.fill(); break;
+      }
+      case 'reactor': {            // светящееся ядро с орбитами
+        ctx.beginPath(); ctx.arc(0, 0, 6 * k, 0, 6.3); ctx.fill();
+        ctx.lineWidth = 1.6 * k; for (const r of [0, 1.05, 2.1]) { ctx.beginPath(); ctx.ellipse(0, 0, 15 * k, 6 * k, r, 0, 6.3); ctx.stroke(); } break;
+      }
+      case 'arsenal': {            // стопка снарядов
+        for (const x of [-9, -3, 3, 9]) { ctx.fillStyle = '#c9a14a'; ctx.fillRect((x - 2.5) * k, -6 * k, 5 * k, 18 * k); ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo((x - 2.5) * k, -6 * k); ctx.lineTo(x * k, -14 * k); ctx.lineTo((x + 2.5) * k, -6 * k); ctx.fill(); } break;
+      }
+      case 'droid': {              // ремонтный дроид с гаечным ключом
+        ctx.fillStyle = '#8c97b0'; ctx.beginPath(); GFX.roundRect(ctx, -9 * k, -8 * k, 18 * k, 14 * k, 4 * k); ctx.fill();
+        ctx.fillStyle = col; ctx.beginPath(); ctx.arc(-4 * k, -2 * k, 2.2 * k, 0, 6.3); ctx.arc(4 * k, -2 * k, 2.2 * k, 0, 6.3); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(-9 * k, 2 * k); ctx.lineTo(-15 * k, 10 * k); ctx.moveTo(9 * k, 2 * k); ctx.lineTo(15 * k, 10 * k); ctx.moveTo(0, -8 * k); ctx.lineTo(0, -14 * k); ctx.stroke(); break;
+      }
+      case 'computer': {           // процессор с прицелом
+        ctx.strokeRect(-11 * k, -11 * k, 22 * k, 22 * k);
+        ctx.beginPath(); ctx.arc(0, 0, 6 * k, 0, 6.3); ctx.moveTo(-15 * k, 0); ctx.lineTo(-8 * k, 0); ctx.moveTo(8 * k, 0); ctx.lineTo(15 * k, 0); ctx.moveTo(0, -15 * k); ctx.lineTo(0, -8 * k); ctx.moveTo(0, 8 * k); ctx.lineTo(0, 15 * k); ctx.stroke(); break;
+      }
+      case 'radar': {              // тарелка с волнами
+        ctx.beginPath(); ctx.arc(-4 * k, 6 * k, 10 * k, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-4 * k, 6 * k); ctx.lineTo(-4 * k, 14 * k); ctx.stroke();
+        ctx.lineWidth = 1.6 * k; for (const r of [6, 11, 16]) { ctx.beginPath(); ctx.arc(-4 * k, 6 * k, r * k, -1.2, -0.4); ctx.stroke(); } break;
+      }
+      case 'ew': {                 // антенна и помехи
+        ctx.beginPath(); ctx.moveTo(0, 14 * k); ctx.lineTo(0, -4 * k); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, -6 * k, 3 * k, 0, 6.3); ctx.fill();
+        ctx.lineWidth = 1.6 * k; ctx.beginPath(); ctx.moveTo(-15 * k, -2 * k);
+        for (let i = 0; i < 6; i++) ctx.lineTo((-15 + i * 6) * k, (i % 2 ? -12 : -2) * k); ctx.stroke(); break;
+      }
+      case 'armor': {              // бронеплита с заклёпками
+        ctx.fillStyle = '#6c7893'; ctx.beginPath(); ctx.moveTo(-12 * k, -12 * k); ctx.lineTo(12 * k, -12 * k); ctx.lineTo(12 * k, 4 * k); ctx.lineTo(0, 14 * k); ctx.lineTo(-12 * k, 4 * k); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = col; for (const [x, y] of [[-7, -7], [7, -7], [-7, 2], [7, 2]]) { ctx.beginPath(); ctx.arc(x * k, y * k, 1.8 * k, 0, 6.3); ctx.fill(); } break;
+      }
+      default: {                   // артефакт: парящий кристалл
+        ctx.beginPath(); ctx.moveTo(0, -16 * k); ctx.lineTo(8 * k, 0); ctx.lineTo(0, 16 * k); ctx.lineTo(-8 * k, 0); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.beginPath(); ctx.moveTo(0, -16 * k); ctx.lineTo(3 * k, 0); ctx.lineTo(0, 16 * k); ctx.closePath(); ctx.fill();
+      }
+    }
+    ctx.restore();
+    // метка уровня
+    ctx.font = `800 ${12 * k}px "Exo 2", sans-serif`; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+    ctx.lineWidth = 3.5 * k; ctx.strokeStyle = '#05070f'; const t = U.roman(it.tier || 1);
+    ctx.strokeText(t, s - 4 * k, s - 3 * k); ctx.fillStyle = GFX.TIER_COL[(it.tier || 1) - 1]; ctx.fillText(t, s - 4 * k, s - 3 * k);
+    const url = cv.toDataURL(); GFX.cache.set(key, url); return url;
+  },
+
   // Слой звёзд и туманностей
   starfield(w, h, seed = 1, opts = {}) {
     const cv = GFX.canvas(w, h), ctx = cv.getContext('2d');

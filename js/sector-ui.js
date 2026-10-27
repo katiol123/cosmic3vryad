@@ -496,10 +496,10 @@ const SectorUI = {
     B.appendChild(h('div', { class: 'ph sm' }, `Трюм: ${Math.round(w.cargoUsed(p))} / ${p.cargoCap}`));
     const keys = Object.keys(p.cargo).filter(k => p.cargo[k] > 0);
     if (!keys.length) B.appendChild(h('div', { class: 'empty-note' }, 'Трюм пуст'));
-    for (const g of keys) B.appendChild(h('div', { class: 'gx-ag' }, g === 'parcel' ? `📦 Курьерские посылки ×${p.cargo[g]}` : `${GOOD[g].icon} ${GOOD[g].name} ×${Math.round(p.cargo[g])}`));
+    for (const g of keys) B.appendChild(h('div', { class: 'gx-ag cg-row' }, g === 'parcel' ? '📦 Курьерские посылки ×' + p.cargo[g] : [h('img', { class: 'gimg sm', src: GFX.goodIcon(g, 48) }), `${GOOD[g].name} ×${Math.round(p.cargo[g])}`]));
     if ((p.stash || []).length) {
       B.appendChild(h('div', { class: 'ph sm' }, 'Модули в трюме (трофеи)'));
-      for (const id of p.stash) B.appendChild(h('div', { class: 'gx-ag' }, `${SLOT_TYPES[ITEMS[id].cat].icon} ${ITEMS[id].name} · ТУ ${U.roman(ITEMS[id].tier)}`));
+      for (const id of p.stash) B.appendChild(h('div', { class: 'gx-ag cg-row' }, h('img', { class: 'gimg sm', src: GFX.itemIcon(ITEMS[id], 48) }), `${ITEMS[id].name} · ТУ ${U.roman(ITEMS[id].tier)}`));
       B.appendChild(h('div', { class: 'fs dim' }, 'Поставить или продать их можно на верфи: выберите слот подходящего типа.'));
     }
     B.appendChild(h('div', { class: 'fs dim' }, 'Трюм — это свободная вместимость корпуса: чем меньше оборудования, тем больше груза.'));
@@ -572,7 +572,7 @@ const SectorUI = {
       const have = Math.round(p.cargo[g.id] || 0);
       const act = (fn, n) => () => { fn.call(w, pl, g.id, n); Sound.click(); this.renderDock(); };
       tbl.appendChild(h('div', { class: 'mk-row' },
-        h('span', null, `${g.icon} ${g.name}`),
+        h('span', { class: 'mk-good' }, h('img', { class: 'gimg', src: GFX.goodIcon(g.id, 64) }), g.name),
         h('span', { class: r < 0.85 ? 'cheap' : r > 1.25 ? 'dear' : '' }, buy),
         h('span', null, sell), h('span', null, Math.round(pl.stock[g.id])), h('span', { class: have ? 'gold' : 'dim' }, have || '—'),
         h('span', { class: 'mk-btns' },
@@ -596,7 +596,7 @@ const SectorUI = {
       p.def.slots[k].forEach((id, i) => {
         const it = id ? ITEMS[id] : null;
         const row = h('div', { class: 'slot' + (it ? ' full' : '') + (this.yardSlot && this.yardSlot.cat === k && this.yardSlot.i === i ? ' sel' : ''), onclick: () => { this.yardSlot = { cat: k, i }; this.renderDock(); } },
-          h('span', { class: 'slot-ico' }, SLOT_TYPES[k].icon),
+          it ? h('img', { class: 'iimg', src: GFX.itemIcon(it, 64) }) : h('span', { class: 'slot-ico' }, SLOT_TYPES[k].icon),
           it ? h('div', { class: 'slot-b' }, h('div', { class: 'nm' }, it.name, this.wearBadge(p.def, k, i)), h('div', { class: 'sh' }, Info.short(it))) : h('div', { class: 'slot-b empty' }, `${SLOT_TYPES[k].name}: пусто`),
           it ? h('button', { class: 'ibtn danger', title: slotInsured(p.def, k, i) ? `Страховой модуль — только как лом: ${Math.round(w.shopPrice(it) * 0.1)} кр.` : `Продать за ${w.sellValue(id, slotWear(p.def, k, i))} кр.`, onclick: e => { e.stopPropagation(); w.sellItem(k, i); Sound.click(); this.renderDock(); } }, '₵') : null);
         if (it) Tip.bind(row, () => Info.tooltip(it));
@@ -612,7 +612,7 @@ const SectorUI = {
         right.appendChild(h('div', { class: 'ph sm' }, 'Из трюма (трофеи)'));
         for (const [id, si] of stash) {
           const it = ITEMS[id], wr = w.stashWear(p, si);
-          const row = h('div', { class: 'pick-row cur' }, h('span', { class: 'tier' }, '✧'), h('div', { class: 'pb' }, h('div', { class: 'nm' }, it.name, wr >= 0.05 ? h('span', { class: 'wear' + (wr >= 0.6 ? ' bad' : '') }, ` износ ${Math.round(wr * 100)}%`) : null), h('div', { class: 'sh' }, Info.short(it))),
+          const row = h('div', { class: 'pick-row cur' }, h('img', { class: 'iimg', src: GFX.itemIcon(it, 64) }), h('div', { class: 'pb' }, h('div', { class: 'nm' }, it.name, wr >= 0.05 ? h('span', { class: 'wear' + (wr >= 0.6 ? ' bad' : '') }, ` износ ${Math.round(wr * 100)}%`) : null), h('div', { class: 'sh' }, Info.short(it))),
             h('div', { class: 'pr' }, h('span', null, 'установить'), h('button', { class: 'ibtn danger', title: `Продать за ${w.sellValue(id, wr)} кр.`, onclick: e => { e.stopPropagation(); w.sellStash(si); Sound.click(); this.renderDock(); } }, '₵')));
           row.addEventListener('click', () => {
             if (defMass(p.def) - (cur ? cur.mass : 0) + it.mass > cap) { this.toast('Не хватает вместимости', 'bad'); return; }
@@ -636,7 +636,7 @@ const SectorUI = {
         const cost = w.shopPrice(it) - (cur ? w.sellValue(cur.id, slotWear(p.def, S.cat, S.i)) : 0);
         const heavy = mass - (cur ? cur.mass : 0) + it.mass > cap, poor = cost > p.credits;
         const row = h('div', { class: 'pick-row' + (heavy || poor ? ' dis' : '') },
-          h('span', { class: 'tier' }, U.roman(it.tier)),
+          h('img', { class: 'iimg', src: GFX.itemIcon(it, 64) }),
           h('div', { class: 'pb' }, h('div', { class: 'nm' }, it.name), h('div', { class: 'sh' }, Info.short(it))),
           h('div', { class: 'pr' }, h('span', { class: 'dim' }, `×${w.stockOf(pl, it.id)}`), h('span', { class: heavy ? 'red' : '' }, '⚖' + it.mass),
             cost < 0 ? h('span', { class: 'green', title: 'Старый модуль дороже нового — разницу вернут' }, `возврат ${-cost} кр.`) : h('span', { class: poor ? 'red' : '', title: cur ? 'Доплата с учётом продажи старого модуля' : '' }, `${cost} кр.`)));
@@ -648,7 +648,7 @@ const SectorUI = {
       right.appendChild(h('div', { class: 'ph sm' }, 'Корпуса на продажу'));
       for (const H of w.shopHulls(pl)) {
         const cost = w.shopPrice(H) - w.hullTradeIn();
-        const row = h('div', { class: 'pick-row' + (cost > p.credits ? ' dis' : '') + (H.id === p.def.hull ? ' cur' : '') },
+        const row = h('div', { class: 'pick-row hullrow' + (cost > p.credits ? ' dis' : '') + (H.id === p.def.hull ? ' cur' : '') },
           h('img', { src: GFX.shipImage(H.id, 0, 80), style: { width: '48px', flex: 'none', objectFit: 'contain' } }),
           h('div', { class: 'pb' }, h('div', { class: 'nm' }, H.name), h('div', { class: 'sh' }, `♥${H.hp} ⚖${H.cap} укл.${H.ev}% · ${Info.slotsText(H)}`)),
           h('div', { class: 'pr' }, H.id === p.def.hull ? null : h('span', { class: 'dim' }, `×${w.stockOf(pl, H.id)}`), h('span', { class: cost > p.credits ? 'red' : '' }, `${Math.max(0, cost)} кр.`)));
@@ -683,7 +683,7 @@ const SectorUI = {
     for (const [k, i, id] of rows) {
       const it = ITEMS[id], wr = slotWear(p.def, k, i), cost = w.gearRepairCost(p, k, i);
       B.appendChild(h('div', { class: 'rp-row' },
-        h('span', { class: 'slot-ico' }, SLOT_TYPES[k].icon),
+        h('img', { class: 'iimg', src: GFX.itemIcon(it, 64) }),
         h('div', { class: 'fb' }, h('div', { class: 'nm' }, it.name), h('div', { class: 'gauge wear-g' + (wr >= 0.6 ? ' bad' : '') }, h('i', { style: { width: Math.round((1 - wr) * 100) + '%' } }), h('span', null, wr >= 1 ? 'сломан' : `состояние ${Math.round((1 - wr) * 100)}%`))),
         cost > 0 ? h('button', { class: 'btn ghost', disabled: cost > p.credits ? true : null, onclick: () => { w.repairGear(p, cost, k, i); Sound.special('cleanse'); this.renderDock(); } }, `🔧 ${cost} кр.`) : h('span', { class: 'fs dim' }, 'как новый')));
     }

@@ -713,3 +713,13 @@ select { background: rgba(10,16,36,.9); border: 1px solid var(--line); border-ra
 }
 @media (max-width: 560px) { .topbar .lbl { display: none; } }
 @media (max-width: 560px) { .arena-hint { display: none; } .log-wrap .ph { display: none; } }
+/* иконки товаров и модулей */
+.gimg { width: 30px; height: 30px; flex: none; image-rendering: auto; filter: drop-shadow(0 0 4px rgba(0,0,0,.6)); }
+.gimg.sm { width: 22px; height: 22px; }
+.iimg { width: 34px; height: 34px; flex: none; border-radius: 8px; }
+.mk-good { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.cg-row { display: flex; align-items: center; gap: 8px; }
+.slot { grid-template-columns: 36px 1fr auto auto; }
+.pick-row { grid-template-columns: 36px 1fr auto; }
+.rp-row { grid-template-columns: 36px 1fr auto; }
+.pick-row.hullrow { grid-template-columns: 52px 1fr auto; }
