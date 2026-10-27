@@ -156,6 +156,7 @@ const SectorUI = {
     for (const n of w.neighbors(sid)) { const [x, y] = w.gatePos(sid, n); out.push({ type: 'gate', to: n, x, y, r: 34 }); }
     for (const q of w.openQuests()) if (q.sector === sid && q.point && !(q.type === 'relic' && q.stage === 1)) out.push({ type: 'quest', id: q.id, x: q.point[0], y: q.point[1], r: QUEST_POINT_R });
     if (s.base) { const [x, y] = w.basePos(sid); out.push({ type: 'base', id: s.base, x, y, r: 34 }); }
+    for (const d of w.dropsIn(sid)) out.push({ type: 'drop', id: d.id, x: d.x, y: d.y, r: 16 });
     for (const wb of w.battles) if (wb.sector === sid && wb.sx != null) out.push({ type: 'battle', id: wb.id, x: wb.sx, y: wb.sy, r: 70 });
     for (const a of w.agents.values()) {
       if (a.ctrl === 'human') continue;
@@ -202,6 +203,7 @@ const SectorUI = {
     else if (o.type === 'point') this.setCourse({ type: 'point', x: o.x, y: o.y });
     else if (o.type === 'base') this.setCourse({ type: 'point', x: o.x * 0.9, y: o.y * 0.9 });
     else if (o.type === 'quest') this.setCourse({ type: 'quest', id: o.id });
+    else if (o.type === 'drop') this.setCourse({ type: 'drop', id: o.id });
     this.tab = 'target';
     this.refresh();
   },
@@ -234,6 +236,9 @@ const SectorUI = {
     } else if (o.type === 'base') {
       const bs = w.bases.find(x => x.id === o.id);
       html = `<b>☠ Пиратская база «${bs ? bs.name : ''}»</b><br>Опасно!`;
+    } else if (o.type === 'drop') {
+      const dr = w.dropById(o.id);
+      if (dr) html = `<b>✧ Обломки</b><br>${w.dropText(dr)}<br><span class="dim">дрейфуют ещё ${dr.until - w.day} дн. · щелчок — подлететь и забрать</span>`;
     }
     t.innerHTML = html;
     t.style.opacity = 1;
@@ -385,6 +390,12 @@ const SectorUI = {
         h('div', { class: 'fs' }, pl.pop > 0 ? `${PLANET_TYPES[pl.type].name} · 👥 ${pl.pop.toFixed(1)} млн · стабильность ${Math.round(pl.stability * 100)}%` : 'Необитаемая планета'),
         f ? h('div', { class: 'fs', style: { color: f.color } }, f.name + (pl.shipyard ? ` · верфь ТУ ${U.roman(w.yardTier(pl))}` : '')) : null,
         pl.pop > 0 ? h('button', { class: 'btn primary', onclick: () => { if (p.docked === pl.id) this.openDock(pl); else this.setCourse({ type: 'planet', id: pl.id }); this.refresh(); } }, p.docked === pl.id ? '🛰 Открыть станцию' : '➤ Лететь и пристыковаться') : null);
+    } else if (o.type === 'drop') {
+      const dr = w.dropById(o.id);
+      if (!dr) { B.appendChild(h('div', { class: 'empty-note' }, 'Обломки уже подобрали.')); return; }
+      U.add(B, h('div', { class: 'ph' }, '✧ Обломки'), h('div', { class: 'fs' }, w.dropText(dr)),
+        h('div', { class: 'fs dim' }, `Дрейфуют ещё ${dr.until - w.day} дн. Кто первым долетит — тот и заберёт. Модули попадут в трюм, их можно поставить на верфи.`),
+        h('button', { class: 'btn primary', onclick: () => { this.setCourse({ type: 'drop', id: dr.id }); this.refresh(); } }, '➤ Подлететь и забрать'));
     } else if (o.type === 'gate') {
       const s = w.sectors[o.to], f = s.owner >= 0 ? w.factions[s.owner] : null;
       U.add(B, h('div', { class: 'ph' }, 'Гиперворота → ' + s.name), h('div', { class: 'fs', style: { color: f ? f.color : '#aaa' } }, f ? f.name : 'ничейный сектор'),
@@ -457,6 +468,11 @@ const SectorUI = {
     const keys = Object.keys(p.cargo).filter(k => p.cargo[k] > 0);
     if (!keys.length) B.appendChild(h('div', { class: 'empty-note' }, 'Трюм пуст'));
     for (const g of keys) B.appendChild(h('div', { class: 'gx-ag' }, g === 'parcel' ? `📦 Курьерские посылки ×${p.cargo[g]}` : `${GOOD[g].icon} ${GOOD[g].name} ×${Math.round(p.cargo[g])}`));
+    if ((p.stash || []).length) {
+      B.appendChild(h('div', { class: 'ph sm' }, 'Модули в трюме (трофеи)'));
+      for (const id of p.stash) B.appendChild(h('div', { class: 'gx-ag' }, `${SLOT_TYPES[ITEMS[id].cat].icon} ${ITEMS[id].name} · ТУ ${U.roman(ITEMS[id].tier)}`));
+      B.appendChild(h('div', { class: 'fs dim' }, 'Поставить или продать их можно на верфи: выберите слот подходящего типа.'));
+    }
     B.appendChild(h('div', { class: 'fs dim' }, 'Трюм — это свободная вместимость корпуса: чем меньше оборудования, тем больше груза.'));
   },
   renderPilot() {
@@ -567,7 +583,8 @@ const SectorUI = {
         right.appendChild(h('div', { class: 'ph sm' }, 'Из трюма (трофеи)'));
         for (const id of stash) {
           const it = ITEMS[id];
-          const row = h('div', { class: 'pick-row cur' }, h('span', { class: 'tier' }, '✧'), h('div', { class: 'pb' }, h('div', { class: 'nm' }, it.name), h('div', { class: 'sh' }, Info.short(it))), h('div', { class: 'pr' }, 'установить'));
+          const row = h('div', { class: 'pick-row cur' }, h('span', { class: 'tier' }, '✧'), h('div', { class: 'pb' }, h('div', { class: 'nm' }, it.name), h('div', { class: 'sh' }, Info.short(it))),
+            h('div', { class: 'pr' }, h('span', null, 'установить'), h('button', { class: 'ibtn danger', title: `Продать за ${w.sellValue(id, 0.3)} кр.`, onclick: e => { e.stopPropagation(); w.sellStash(id); Sound.click(); this.renderDock(); } }, '₵')));
           row.addEventListener('click', () => {
             if (defMass(p.def) - (cur ? cur.mass : 0) + it.mass > cap) { this.toast('Не хватает вместимости', 'bad'); return; }
             p.stash.splice(p.stash.indexOf(id), 1);
@@ -583,14 +600,14 @@ const SectorUI = {
       }
       right.appendChild(h('div', { class: 'ph sm' }, `Купить: ${SLOT_TYPES[S.cat].name}`));
       const items = w.shopItems(pl, S.cat).sort((a, b) => a.tier - b.tier || a.price - b.price);
-      if (!items.length) right.appendChild(h('div', { class: 'empty-note' }, 'Здесь такое не продают'));
+      if (!items.length) right.appendChild(h('div', { class: 'empty-note' }, 'Сейчас на складе нет — раскупили. Новую партию привезёт снабженец фракции (если его не перехватят), или загляните на другую верфь.'));
       for (const it of items) {
         const cost = w.shopPrice(it) - (cur ? w.sellValue(cur.id, slotWear(p.def, S.cat, S.i)) : 0);
         const heavy = mass - (cur ? cur.mass : 0) + it.mass > cap, poor = cost > p.credits;
         const row = h('div', { class: 'pick-row' + (heavy || poor ? ' dis' : '') },
           h('span', { class: 'tier' }, U.roman(it.tier)),
           h('div', { class: 'pb' }, h('div', { class: 'nm' }, it.name), h('div', { class: 'sh' }, Info.short(it))),
-          h('div', { class: 'pr' }, h('span', { class: heavy ? 'red' : '' }, '⚖' + it.mass), h('span', { class: poor ? 'red' : '' }, `${cost} кр.`)));
+          h('div', { class: 'pr' }, h('span', { class: 'dim' }, `×${w.stockOf(pl, it.id)}`), h('span', { class: heavy ? 'red' : '' }, '⚖' + it.mass), h('span', { class: poor ? 'red' : '' }, `${cost} кр.`)));
         row.addEventListener('click', () => { const err = w.buyItem(S.cat, S.i, it.id); if (err) this.toast(err, 'bad'); else Sound.special('make'); this.renderDock(); });
         Tip.bind(row, () => Info.tooltip(it));
         right.appendChild(row);
@@ -602,7 +619,7 @@ const SectorUI = {
         const row = h('div', { class: 'pick-row' + (cost > p.credits ? ' dis' : '') + (H.id === p.def.hull ? ' cur' : '') },
           h('img', { src: GFX.shipImage(H.id, 0, 80), style: { width: '44px' } }),
           h('div', { class: 'pb' }, h('div', { class: 'nm' }, H.name), h('div', { class: 'sh' }, `♥${H.hp} ⚖${H.cap} укл.${H.ev}% · ${Info.slotsText(H)}`)),
-          h('div', { class: 'pr' }, h('span', { class: cost > p.credits ? 'red' : '' }, `${Math.max(0, cost)} кр.`)));
+          h('div', { class: 'pr' }, H.id === p.def.hull ? null : h('span', { class: 'dim' }, `×${w.stockOf(pl, H.id)}`), h('span', { class: cost > p.credits ? 'red' : '' }, `${Math.max(0, cost)} кр.`)));
         if (H.id !== p.def.hull) row.addEventListener('click', () => { const err = w.buyHull(H.id); if (err) this.toast(err, 'bad'); else { Sound.victory(true); this.toast(`Куплен корпус ${H.name}`, 'me'); } this.renderDock(); });
         Tip.bind(row, () => Info.hullTooltip(H));
         right.appendChild(row);
@@ -823,6 +840,22 @@ const SectorUI = {
       const st = GFX.station(64, true), sz = Math.max(28 * d, 70 * z);
       ctx.save(); ctx.translate(x, y); ctx.rotate(this.t * 0.2);
       ctx.drawImage(st, -sz / 2, -sz / 2, sz, sz);
+      ctx.restore();
+    }
+    // обломки: мерцающие контейнеры
+    for (const dr of w.dropsIn(sid)) {
+      const [x, y] = S(dr.x, dr.y);
+      const pul = 0.5 + 0.5 * Math.sin(this.t * 5 + dr.id);
+      const col = dr.items.length ? '#ffd166' : '#9ad1ff';
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(x, y, 0, x, y, 16 * d);
+      g.addColorStop(0, U.rgba(col, 0.35 + pul * 0.35)); g.addColorStop(1, U.rgba(col, 0));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 16 * d, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.save(); ctx.translate(x, y); ctx.rotate(this.t * 0.8 + dr.id);
+      ctx.fillStyle = U.rgba(col, 0.9); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1 * d;
+      ctx.fillRect(-4 * d, -4 * d, 8 * d, 8 * d); ctx.strokeRect(-4 * d, -4 * d, 8 * d, 8 * d);
       ctx.restore();
     }
     // маяки особых поручений в этом секторе

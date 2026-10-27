@@ -62,7 +62,9 @@ Object.assign(World.prototype, {
       if (a.battle) continue;
       let tx = a.sx, ty = a.sy;
       const pl = this.player;
-      if (a.docked != null) [tx, ty] = this.planetPos(this.planets[a.docked]);
+      const lt = a.lootTarget != null ? this.lootMove(a) : null;
+      if (lt) [tx, ty] = lt;
+      else if (a.docked != null) [tx, ty] = this.planetPos(this.planets[a.docked]);
       else if (a.chase && pl && pl.alive && pl.loc === a.loc && !pl.travel) { tx = pl.sx; ty = pl.sy; }
       else if (a.task && a.task.planet != null && this.planets[a.task.planet].sector === a.loc) [tx, ty] = this.planetPos(this.planets[a.task.planet]);
       else if (a.faction === PIRATE) {
@@ -93,6 +95,7 @@ Object.assign(World.prototype, {
   targetPos(t) {
     switch (t.type) {
       case 'point': return [t.x, t.y];
+      case 'drop': { const d = this.dropById(t.id); return d && d.sector === this.player.loc ? [d.x, d.y] : null; }
       case 'planet': return this.planetPos(this.planets[t.id]);
       case 'gate': return this.gatePos(this.player.loc, t.to);
       case 'ship': { const a = this.agents.get(t.id); return a && a.loc === this.player.loc && !a.travel ? [a.sx, a.sy] : null; }
@@ -175,6 +178,10 @@ Object.assign(World.prototype, {
         p.target = null;
         return;
       }
+      case 'drop':
+        p.target = null;
+        if (!this.pickDrop(p, this.dropById(t.id))) this.log('Обломки уже кто-то подобрал.', 'player');
+        return;
       case 'point': case 'quest':
         p.target = null;
         this.questReach(p);
@@ -249,8 +256,10 @@ Object.assign(World.prototype, {
   // ---------- репутация ----------
   addRepRaw(a, f, d) {
     if (f < 0 || f === PIRATE) return;
-    a.rep[f] = U.clamp((a.rep[f] || 0) + d, -100, 100);
-    if (a.member === f && a.rep[f] < 0) { a.member = FREE; this.log(`Вас уволили со службы: ${this.factions[f].name}.`, 'player'); }
+    const before = a.rep[f] || 0;
+    a.rep[f] = U.clamp(before + d, -100, 100);
+    if (this.repCrossed) this.repCrossed(a, f, before, a.rep[f]);
+    if (a.ctrl === 'human' && a.member === f && a.rep[f] < 0) { a.member = FREE; this.log(`Вас уволили со службы: ${this.factions[f].name}.`, 'player'); }
   },
   joinFaction(f) {
     const p = this.player;
@@ -299,6 +308,8 @@ Object.assign(World.prototype, {
   },
   shopItems(pl, cat) {
     if (!pl.shipyard) return [];
+    // в продаже — только то, что есть на складе верфи
+    if (this.yard) { const Y = this.yard(pl); return Object.keys(Y.stock).map(id => ITEMS[id]).filter(it => it && it.cat === cat); }
     const makers = this.yardMakers(pl);
     if (cat === 'artifact') return pl.shipyard >= 4 ? itemsFor('artifact').filter((_, i) => (i + pl.id) % 4 === 0) : [];
     const t = this.yardTier(pl);
@@ -306,6 +317,7 @@ Object.assign(World.prototype, {
   },
   shopHulls(pl) {
     if (!pl.shipyard) return [];
+    if (this.yard) { const Y = this.yard(pl); return Object.keys(Y.hulls).map(id => HULLS[id]).filter(Boolean); }
     const makers = this.yardMakers(pl);
     const t = this.yardTier(pl);
     return HULL_LIST.filter(h => h.tier <= t && makers.includes(h.maker));
@@ -318,7 +330,10 @@ Object.assign(World.prototype, {
     if (p.credits < cost) return 'Не хватает кредитов';
     if (defMass(p.def) - (old ? old.mass : 0) + it.mass > HULLS[p.def.hull].cap) return 'Не хватает вместимости корпуса';
     if (cat === 'artifact' && p.def.slots.artifact.includes(id)) return 'Такой артефакт уже установлен';
+    const pl = this.planets[p.docked];
+    if (pl && this.yard && !this.stockOf(pl, id)) return 'Этого уже нет на складе';
     p.credits -= cost;
+    if (pl && this.yard) { this.takeStock(pl, id); if (old) this.addStock(pl, old.id); }
     p.def.slots[cat][idx] = id;
     setWear(p.def, cat, idx, 0);
     this.refreshKeep(p);
@@ -328,6 +343,8 @@ Object.assign(World.prototype, {
     const p = this.player, id = p.def.slots[cat][idx];
     if (!id) return;
     p.credits += this.sellValue(id, slotWear(p.def, cat, idx));
+    const pl = this.planets[p.docked];
+    if (pl && pl.shipyard && this.addStock) this.addStock(pl, id); // проданное пополняет склад верфи
     p.def.slots[cat][idx] = null;
     setWear(p.def, cat, idx, 0);
     this.refreshKeep(p);
@@ -336,7 +353,10 @@ Object.assign(World.prototype, {
     const p = this.player, H = HULLS[hullId];
     const cost = this.shopPrice(H) - Math.round(this.shopPrice(HULLS[p.def.hull]) * 0.5);
     if (p.credits < cost) return 'Не хватает кредитов';
+    const pl = this.planets[p.docked];
+    if (pl && this.yard && !this.stockOf(pl, hullId)) return 'Этого корпуса уже нет на складе';
     p.credits -= cost;
+    if (pl && this.yard) { this.takeStock(pl, hullId); this.addStock(pl, p.def.hull); }
     let nd = setHull(p.def, hullId);
     // не поместившееся оборудование продаётся за полцены
     const order = ['artifact', 'armor', 'ew', 'radar', 'computer', 'droid', 'arsenal', 'shield', 'weapon', 'reactor', 'engine'];
@@ -354,6 +374,15 @@ Object.assign(World.prototype, {
     let over = this.cargoUsed(p) - p.cargoCap;
     for (const g in p.cargo) { if (over <= 0) break; const d = Math.min(over, p.cargo[g]); p.cargo[g] -= d; over -= d; if (!p.cargo[g]) delete p.cargo[g]; }
     return null;
+  },
+  // продать трофей из трюма
+  sellStash(id) {
+    const p = this.player, i = (p.stash || []).indexOf(id);
+    if (i < 0) return;
+    p.stash.splice(i, 1);
+    p.credits += this.sellValue(id, 0.3);
+    const pl = this.planets[p.docked];
+    if (pl && pl.shipyard && this.addStock) this.addStock(pl, id);
   },
   refreshKeep(p, full) {
     const frac = p.hp != null && p.maxHp ? p.hp / p.maxHp : 1;

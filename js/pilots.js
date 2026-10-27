@@ -110,6 +110,11 @@ Object.assign(World.prototype, {
   pilotMassLimit(a) { return HULLS[a.def.hull].cap * (1 - 0.35 * a.personality.trade); },
 
   pilotOutfit(a, pl) {
+    // трофеи из трюма — на продажу (на верфи они пополнят склад)
+    if (a.stash && a.stash.length && pl.shipyard) {
+      for (const id of a.stash) { a.credits += this.sellValue(id, 0.3); this.addStock(pl, id); }
+      a.stash = [];
+    }
     // сначала ремонт: корпус, затем модули (на ремонт можно потратить и часть резерва)
     const reserve = this.pilotReserve(a);
     const dmg = a.maxHp - a.hp;
@@ -156,6 +161,9 @@ Object.assign(World.prototype, {
       }
       if (!best) break;
       a.credits -= best.cost;
+      const old = a.def.slots[best.k][best.i];
+      this.takeStock(pl, best.it.id);
+      if (old) this.addStock(pl, old);
       a.def.slots[best.k][best.i] = best.it.id;
       setWear(a.def, best.k, best.i, 0);
       a.s = computeStats(a.def);
@@ -189,7 +197,10 @@ Object.assign(World.prototype, {
   pilotHull(a, pl, best) {
     if (!best) return 0;
     const { H, cost } = best;
+    if (!this.stockOf(pl, H.id)) return 0;
     a.credits -= Math.max(0, cost);
+    this.takeStock(pl, H.id);
+    this.addStock(pl, a.def.hull);
     const nd = setHull(a.def, H.id);
     // не поместившееся — на продажу
     const order = ['artifact', 'ew', 'radar', 'armor', 'computer', 'droid', 'arsenal', 'shield', 'weapon', 'reactor', 'engine'];

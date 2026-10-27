@@ -17,6 +17,7 @@ const QUEST_TYPES = {
   convoy:  { name: 'Удар по снабжению', icon: '⚔' },
   peace:   { name: 'Мирный договор', icon: '🕊' },
   relic:   { name: 'Древние технологии', icon: '✧' },
+  bounty:  { name: 'Охота за головой', icon: '🎯' },
 };
 const QUEST_POINT_R = 90;   // радиус точки задания внутри сектора
 
@@ -49,7 +50,7 @@ Object.assign(World.prototype, {
     if (this.openQuests().length >= 9) return;
     for (const f of this.factions) {
       if (!f.alive || (f.lastQuest && this.day - f.lastQuest < 6)) continue;
-      if (this.openQuests().some(q => q.giver === f.idx && q.type !== 'rescue')) continue;
+      if (this.openQuests().some(q => q.giver === f.idx && q.type !== 'rescue' && q.type !== 'bounty')) continue;
       const need = this.factionNeed(f);
       if (need) need();
       if (this.openQuests().length >= 9) break;
@@ -95,6 +96,18 @@ Object.assign(World.prototype, {
     return Math.random() < 0.35 ? opts[0][1] : null;
   },
 
+  // бандит: репутация у фракции рухнула — награда за его голову
+  questBounty(fi, a) {
+    const F = this.factions[fi];
+    if (!F || !F.alive || this.openQuests().some(q => q.type === 'bounty' && q.giver === fi && q.target === a.id)) return;
+    const reward = Math.round(2500 + this.strength(a) * 6 + (a.banditry || 0) * 500);
+    const q = this.makeQuest('bounty', fi, {
+      target: a.id, sector: a.loc != null ? a.loc : a.travel ? a.travel.to : null, titleExtra: a.name, reward, rep: 15, deadline: this.day + 45,
+      reason: `${a.ctrl === 'human' ? 'пилот' : 'наёмник'} ${a.name} нападает на наши корабли. Уничтожьте его — патрули и военные тоже атакуют его при встрече.`,
+    });
+    if (a.ctrl === 'human') this.log(`🎯 ${F.short} объявила награду ${reward} кр. за вашу голову! Её патрули атакуют вас при встрече, а наёмники могут начать охоту.`, 'player');
+    return q;
+  },
   questBoss(f) {
     // главарь — с той базы, что ближе всего к нашей территории
     const base = this.bases.filter(b => b.alive).sort((a, b) => this.hops(a.sector, f.capitalSector) - this.hops(b.sector, f.capitalSector))[0];
@@ -187,6 +200,7 @@ Object.assign(World.prototype, {
   canTake(a, q) {
     if (q.status !== 'open') return 'Поручение уже закрыто';
     if (q.exclusive && q.taken && q.taken !== a.id) return 'Поручение уже взял другой пилот';
+    if (q.type === 'bounty' && q.target === a.id) return 'Это награда за вашу голову';
     if (q.type === 'peace' && (a.rep[q.enemy] || 0) <= -40) return 'Враг не примет вас как посланника';
     if ((a.rep[q.giver] || 0) <= -30) return `${this.factions[q.giver].short} вам не доверяет`;
     return null;
@@ -196,6 +210,7 @@ Object.assign(World.prototype, {
     if (err) return err;
     if (q.exclusive) q.taken = a.id;
     if (!q.takers.includes(a.id)) q.takers.push(a.id);
+    if (q.type === 'bounty') a.bountyOn = q.target;
     if (a.ctrl === 'human') this.log(`📜 Вы взялись за поручение: ${q.title}.`, 'player');
     else if (q.exclusive || q.type === 'boss' || q.type === 'relic') this.log(`★ ${a.name} берётся за поручение «${q.title}».`, 'pilot', { s: q.sector });
     return null;
@@ -229,7 +244,13 @@ Object.assign(World.prototype, {
       if (a.ctrl === 'human') this.log(`✖ Вас опередили: «${q.title}» — ${winner ? 'выполнил ' + this.who(winner) : note || 'выполнено без вас'}.`, 'player');
       if (a.task && a.task.quest === q.id) a.task = null;
     }
+    this.questRelease(q);
     this.questEffect(q);
+  },
+  // охотники больше не преследуют цель закрытого поручения
+  questRelease(q) {
+    if (q.type !== 'bounty') return;
+    for (const id of q.takers) { const a = this.agents.get(id); if (a && a.bountyOn === q.target && !this.openQuests().some(o => o !== q && o.type === 'bounty' && o.target === q.target && o.takers.includes(id))) a.bountyOn = null; }
   },
   // куда лететь пилоту по поручению: сектор и цель внутри сектора
   questSector(p, q) {
@@ -238,6 +259,7 @@ Object.assign(World.prototype, {
   },
   questTarget(p, q) {
     if (q.type === 'relic' && q.holder === p.id) return { type: 'planet', id: this.factions[q.giver].capital };
+    if (q.type === 'bounty') return { type: 'ship', id: q.target, attack: true };
     if (q.point) return { type: 'quest', id: q.id };
     if (q.planet != null) return { type: 'planet', id: q.planet };
     if (q.type === 'base') return { type: 'base' };
@@ -255,6 +277,7 @@ Object.assign(World.prototype, {
       if (q.exclusive && q.taken === a.id) this.addRepRaw(a, q.giver, -8);
       if (a.task && a.task.quest === q.id) a.task = null;
     }
+    this.questRelease(q);
     if (q.type === 'boss') { const b = this.agents.get(q.boss); if (b) b.boss = false; }
   },
 
@@ -266,6 +289,11 @@ Object.assign(World.prototype, {
     const boost = text => this.log(`⬆ Усиление ${F.short}: ${text}`, 'buff', { f: [F.idx] });
     const freeShip = kind => { const yard = this.factionPlanets(F.idx).sort((a, b) => b.shipyard - a.shipyard)[0]; if (yard) { this.spawn(kind, F.idx, yard.sector, { home: yard.id }); F.st.built++; } };
     switch (q.type) {
+      case 'bounty': {
+        for (const p of this.factionPlanets(F.idx)) p.stability = Math.min(1, p.stability + 0.03);
+        boost('разбойник уничтожен — торговцы снова спокойно летают по трассам (стабильность +3%)');
+        return;
+      }
       case 'boss':
         F.st.recentPirateLoss = 0;
         for (const s of this.factionSectors(F.idx)) s.heat *= 0.4;
@@ -321,6 +349,11 @@ Object.assign(World.prototype, {
   // ---------- события мира → прогресс поручений ----------
   questOnKill(victim, killer) {
     for (const q of this.openQuests()) {
+      if (q.type === 'bounty' && victim.id === q.target) {
+        if (killer && killer.kind === 'pilot') this.questComplete(q, killer, `${victim.name} уничтожен`);
+        else this.questComplete(q, null, killer ? `${victim.name} уничтожен: ${this.who(killer)}` : `${victim.name} погиб`);
+        continue;
+      }
       if (q.type === 'boss' && victim.id === q.boss) {
         if (killer && killer.kind === 'pilot') this.questComplete(q, killer);
         else this.questComplete(q, null, killer ? `главаря уничтожил ${this.who(killer)}` : 'главарь погиб');
@@ -447,6 +480,12 @@ Object.assign(World.prototype, {
         if (!c) { this.questFail(q, 'курьер погиб'); continue; }
         if (c.loc != null && !c.travel && !c.battle && c.docked == null && Math.random() < 0.12) this.ambush(c, 1, 'наёмники сторонников войны');
       }
+      if (q.type === 'bounty') {
+        const t = this.agents.get(q.target);
+        if (t) q.sector = t.loc != null ? t.loc : t.travel ? t.travel.to : q.sector;
+        // бандит загладил вину — охоту отменяют
+        if (t && (t.rep[q.giver] || 0) > -30) this.questFail(q, 'фракция простила');
+      }
       if (q.type === 'boss') {
         const b = this.agents.get(q.boss);
         if (!b) { this.questComplete(q, null, 'главарь пропал'); continue; }
@@ -471,6 +510,7 @@ Object.assign(World.prototype, {
       // какую силу требует поручение (с запасом на осторожность пилота)
       let need = 0;
       if (q.type === 'boss') { const b = this.agents.get(q.boss); need = b ? this.strength(b) * 1.1 : 0; }
+      if (q.type === 'bounty') { const t = this.agents.get(q.target); if (!t || t === a) continue; need = this.strength(t) * 1.2; }
       if (q.type === 'base') need = Math.max(this.pirateForce(q.sector) * 0.9, thr * 1.5); // охрана может вернуться, у станции свои орудия
       if (q.type === 'relic' && q.stage === 0) need = Math.max(260, thr * 1.2);
       if (q.type === 'convoy') need = thr;
@@ -504,7 +544,8 @@ Object.assign(World.prototype, {
       if (!s) return false;
       a.task = { type: 'hunt', sector: s.id, days: 3, quest: q.id };
     } else {
-      a.task = { type: 'quest', sector: q.sector, quest: q.id, days: q.type === 'base' ? 6 : q.type === 'boss' ? 3 : 1 };
+      if (q.sector == null) return false;
+      a.task = { type: 'quest', sector: q.sector, quest: q.id, days: q.type === 'base' ? 6 : q.type === 'boss' || q.type === 'bounty' ? 3 : 1 };
     }
     this.go(a, a.task.sector);
     return true;
@@ -513,7 +554,7 @@ Object.assign(World.prototype, {
   pilotQuestArrive(a, T) {
     const q = this.questById(T.quest);
     if (!q || q.status !== 'open') return true;
-    if (q.type === 'boss') {
+    if (q.type === 'boss' || q.type === 'bounty') {
       // главарь улетел — догоняем
       if (q.sector !== a.loc) { T.sector = q.sector; this.go(a, q.sector); return false; }
       if (T.days-- > 0) { a.wait = 1; return false; }

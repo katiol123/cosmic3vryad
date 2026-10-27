@@ -9,7 +9,7 @@
 
 const WORLD_W = 1200, WORLD_H = 800;
 const BATTLE_ROUNDS_PER_DAY = 3;   // сколько «раундов» боя проходит за один день кампании
-const NONCOMBAT = ['trader', 'diplomat', 'colonist', 'miner'];
+const NONCOMBAT = ['trader', 'diplomat', 'colonist', 'miner', 'supply'];
 
 class World {
   constructor(opts = {}) {
@@ -257,7 +257,7 @@ class World {
   // =====================================================
   designShip(kind, faction, tier) {
     const prefs = {
-      trader: ['corvette', 'frigate', 'raider', 'destroyer'], diplomat: ['scout', 'fighter', 'corvette', 'raider'],
+      trader: ['corvette', 'frigate', 'raider', 'destroyer'], supply: ['corvette', 'frigate', 'raider'], diplomat: ['scout', 'fighter', 'corvette', 'raider'],
       patrol: ['fighter', 'corvette', 'frigate', 'destroyer'], warship: ['frigate', 'destroyer', 'cruiser', 'battleship', 'dreadnought'],
       colonist: ['corvette', 'frigate'], miner: ['corvette', 'frigate'], pirate: ['fighter', 'raider', 'corvette', 'frigate', 'destroyer'],
       pilot: ['scout', 'fighter', 'corvette', 'raider', 'frigate', 'destroyer', 'cruiser'],
@@ -271,7 +271,7 @@ class World {
     const def = emptyDef(hull.id, U.pick(SHIP_NAMES));
     autoFill(def, tier);
     // мирным кораблям — меньше оружия, больше трюма
-    const keep = { trader: 1, colonist: 1, miner: 1, diplomat: 1 }[kind];
+    const keep = { trader: 1, colonist: 1, miner: 1, diplomat: 1, supply: 1 }[kind];
     if (keep != null) def.slots.weapon = def.slots.weapon.map((w, i) => (i < keep ? w : null));
     if (keep != null) def.slots.armor = def.slots.armor.map(() => null);
     return def;
@@ -303,7 +303,7 @@ class World {
       a.name = extra.name || `${first} ${last}`;
       a.def.name = a.name;
       a.credits = extra.credits != null ? extra.credits : 2500 + Math.floor(Math.random() * 3000);
-      a.personality = a.personality || { trade: Math.random(), hunt: Math.random(), merc: Math.random(), loyal: Math.random() };
+      a.personality = a.personality || { trade: Math.random(), hunt: Math.random(), merc: Math.random(), loyal: Math.random(), greed: Math.random() };
       a.rep = {};
     }
     if (kind === 'pirate') a.name = `${U.pick(PIRATE_NAMES)}`;
@@ -529,6 +529,7 @@ class World {
     const m = this.memberOf(a);
     if (a.faction === PIRATE) return false;
     if (p.owner === FREE) return true;
+    if (a.kind === 'pilot' && (a.rep[p.owner] || 0) <= -50) return false; // разыскиваемых не пускают
     if (m >= 0 && this.atWar(m, p.owner)) return false;
     return this.rel(m, p.owner) > -60 || m === FREE;
   }
@@ -552,6 +553,7 @@ class World {
       case 'miner': return this.planMine(a);
       case 'pirate': return this.planPirate(a);
       case 'pilot': return this.planPilot(a);
+      case 'supply': this.agents.delete(a.id); a.alive = false; return;
     }
   }
 
@@ -666,6 +668,7 @@ class World {
         return true;
       }
       case 'goto': return true;
+      case 'supply': return this.supplyArrive(a, T);
       case 'quest': return this.pilotQuestArrive(a, T);
       case 'questDock': {
         if (P) this.questOnDock(a, P);
@@ -819,7 +822,9 @@ class World {
 
   addRep(a, f, d) {
     if (a.kind !== 'pilot' || f < 0 || f === PIRATE) return;
-    a.rep[f] = U.clamp((a.rep[f] || 0) + d, -100, 100);
+    const before = a.rep[f] || 0;
+    a.rep[f] = U.clamp(before + d, -100, 100);
+    if (this.repCrossed) this.repCrossed(a, f, before, a.rep[f]);
     // предложение поступить на службу
     if (a.member === FREE && a.rep[f] >= 40 && a.personality.loyal > 0.45 && Math.random() < 0.15 && a.ctrl !== 'human') {
       a.member = f;
@@ -846,7 +851,8 @@ class World {
   planPilot(a) {
     const here = this.planets.filter(p => p.sector === a.loc && this.friendlyPlanet(a, p));
     const dock = here.sort((x, y) => y.shipyard - x.shipyard)[0];
-    // у дружественной планеты: ремонт, а на верфи — закупка модулей или новый корпус
+    // у дружественной планеты: продать подобранный груз, ремонт, а на верфи — закупка модулей или новый корпус
+    if (dock && this.cargoUsed(a) > 0) this.sellAll(a, dock);
     if (dock) this.pilotOutfit(a, dock);
     const A = this.assess(a);
     // побитый корабль — сначала в ремонт (слабые и осторожные чинятся раньше)
@@ -871,11 +877,14 @@ class World {
     opts.push(['trade', (0.2 + P.trade * (a.cargoCap > 10 ? 1.2 : 0.3)) * (A.broke ? 0.5 : money) * (A.weak ? 1.4 : 1)]);
     opts.push(['hunt', (0.1 + P.hunt * (a.s.weapons.length ? 1 : 0)) * cf]);
     opts.push(['courier', (0.2 + P.merc) * money * (A.weak ? 1.3 : 1)]);
+    const bw = this.banditWeight ? this.banditWeight(a, A) : 0;
+    if (bw > 0) opts.push(['rob', bw]);
     const q = this.pilotPickQuest ? this.pilotPickQuest(a, A) : null;
     if (q) opts.push(['quest', (0.5 + P.merc * 0.8 + P.hunt * 0.4) * (A.poor ? 1.3 : 1)]);
     const choice = opts[U.weighted(opts.map(o => o[1]))][0];
     a.intent = { war: 'война', patrol: 'патруль', trade: 'торговля', hunt: 'охота на пиратов', courier: 'курьер', quest: 'поручение' }[choice];
     if (choice === 'quest' && this.pilotDoQuest(a, q)) return;
+    if (choice === 'rob') return this.planRobbery(a);
     if (choice === 'trade') return this.planTrade(a, true);
     if (choice === 'war') {
       const enemies = [...this.factions[m].wars];
@@ -974,6 +983,8 @@ class World {
   hostile(a, b) {
     if (a.faction === PIRATE) return b.faction !== PIRATE;
     if (b.faction === PIRATE) return true;
+    // охотник за головой и его цель
+    if ((a.bountyOn != null && a.bountyOn === b.id) || (b.bountyOn != null && b.bountyOn === a.id)) return true;
     // пилот с очень плохой репутацией у фракции — её враг
     if (a.kind === 'pilot' && b.faction >= 0 && (a.rep[b.faction] || 0) <= -50) return true;
     if (b.kind === 'pilot' && a.faction >= 0 && (b.rep[a.faction] || 0) <= -50) return true;
@@ -987,7 +998,8 @@ class World {
     return here.filter(N => N === X || (!N.battle && N.faction === X.faction && N.faction !== FREE && !NONCOMBAT.includes(N.kind)));
   }
   wantsAttack(A, B, here) {
-    if (!this.hostile(A, B) || A.battle || B.battle) return false;
+    const rob = this.isRobbery && this.isRobbery(A, B);
+    if ((!this.hostile(A, B) && !rob) || A.battle || B.battle) return false;
     if (NONCOMBAT.includes(A.kind)) return false;
     const sum = list => U.sum(list, x => this.strength(x));
     const ratio = here ? sum(this.team(A, here)) / Math.max(1, sum(this.team(B, here))) : this.strength(A) / Math.max(1, this.strength(B));
@@ -1006,6 +1018,7 @@ class World {
         // не лезет в драку побитым или с ценным грузом, требует перевеса с учётом своей осторожности
         const me = this.assess(A);
         if (me.hpF < 0.5) return false;
+        if (rob) return ratio > me.caution * 1.3 && Math.random() < 0.6;
         // бой «три в ряд» непредсказуем: нужен ощутимый перевес, а не равенство
         const need = me.caution * 1.5 * (this.cargoValue(A) > 2000 ? 1.5 : 1);
         if (B.faction === PIRATE) return ratio > need && Math.random() < 0.35 + A.personality.hunt * 0.5;
@@ -1101,10 +1114,14 @@ class World {
         if (B.ctrl === 'human') { if (!A.chase) { A.chase = B.id; this.log(`⚠ ${this.who(A)} идёт на перехват!`, 'player', { s: s.id }); } continue; }
         // кто ещё в секторе поддержит каждую сторону
         const sideA = [A], sideB = [B];
+        const robbery = this.isRobbery && this.isRobbery(A, B) && !this.hostile(A, B);
+        if (robbery) this.onRobbery(A, B, s.id);
         for (const N of here) {
           if (N === A || N === B || N.battle || N.ctrl === 'human') continue;
           if (!this.hostile(N, A) && this.hostile(N, B) && !NONCOMBAT.includes(N.kind) && (N.faction === A.faction || (A.faction === PIRATE && N.faction === PIRATE))) sideA.push(N);
           else if (!this.hostile(N, B) && this.hostile(N, A) && (N.faction === B.faction && N.faction !== FREE)) sideB.push(N);
+          // на разбой своих кораблей патрули и военные отвечают сразу
+          else if (robbery && N.faction === B.faction && (N.kind === 'patrol' || N.kind === 'warship')) sideB.push(N);
         }
         this.startBattle(s.id, sideA, sideB);
       }
@@ -1139,7 +1156,8 @@ class World {
   syncBattle(wb) {
     for (const sh of wb.b.ships) {
       const a = this.agents.get(sh.ref);
-      if (!a || !a.alive) continue;
+      // уже учтённый корабль (погиб, ушёл) не трогаем: у пилота после катапультирования тот же номер, но новый корабль
+      if (!a || !a.alive || sh.synced) continue;
       a.hp = sh.hp; a.shield = sh.shield;
       if (!sh.alive && !sh.fled && !sh.synced) {
         sh.synced = true;
@@ -1191,11 +1209,13 @@ class World {
     this.syncBattle(wb);
     const survivors = wb.b.ships.filter(sh => sh.alive).map(sh => this.agents.get(sh.ref)).filter(Boolean);
     for (const sh of wb.b.ships) if (sh.alive) this.wearBattle(this.agents.get(sh.ref), sh);
+    // сильно подбитые теряют часть груза и модулей
+    for (const a of survivors) if (this.makeDrop && a.hp < a.maxHp * 0.3) this.makeDrop(a, wb.sector, a.sx != null ? a.sx : wb.sx, a.sy != null ? a.sy : wb.sy, DROP_HURT_K, true);
     for (const a of survivors) {
       a.battle = null; a.wait = 1;
       if (a.faction === PIRATE && a.loot > 0) { a.task = null; a.wait = 0; } // с добычей — сразу на базу
     }
-    for (const sh of wb.b.ships) { const a = this.agents.get(sh.ref); if (a) a.battle = null; }
+    for (const sh of wb.b.ships) { const a = this.agents.get(sh.ref); if (a && a.battle === wb.id) a.battle = null; }
   }
 
   destroyed(a, killer, wb) {
@@ -1203,6 +1223,10 @@ class World {
     this.agents.delete(a.id);
     this.stats.destroyed++;
     const sec = this.sectors[a.loc != null ? a.loc : wb.sector];
+    // обломки: часть груза и модулей уцелела
+    if (this.makeDrop) this.makeDrop(a, sec.id, a.sx != null ? a.sx : wb ? wb.sx : 0, a.sy != null ? a.sy : wb ? wb.sy : 0);
+    // бандит, убивший мирный корабль, окончательно портит отношения
+    if (killer && killer.kind === 'pilot' && a.faction >= 0 && a.faction !== PIRATE && !this.hostile(killer, a)) this.addRepRaw(killer, a.faction, -10);
     const byPirate = killer && killer.faction === PIRATE;
     const value = a.price + this.cargoValue(a);
     if (a.faction >= 0 && a.faction !== PIRATE) {
@@ -1230,7 +1254,7 @@ class World {
     if (killer) {
       killer.kills++;
       if (killer.ctrl === 'human' && this.onPlayerKill) this.onPlayerKill(a);
-      if (killer.faction === PIRATE) killer.loot += this.cargoValue(a) * 0.8 + a.price * 0.1 + (a.kind === 'pilot' ? a.credits * 0.3 : 0);
+      if (killer.faction === PIRATE) killer.loot += this.cargoValue(a) * 0.35 + a.price * 0.1 + (a.kind === 'pilot' ? a.credits * 0.3 : 0); // остальной груз — в обломках
       if (a.faction === PIRATE) {
         this.stats.pirateKills++;
         const kf = this.memberOf(killer);
@@ -1238,7 +1262,6 @@ class World {
         if (killer.kind === 'pilot') {
           const bounty = Math.round(300 + a.price * 0.12);
           killer.credits += bounty;
-          this.salvage(killer, a);
           if (sec.owner >= 0) { this.addRep(killer, sec.owner, 4); this.factions[sec.owner].treasury -= bounty * 0.5; }
           this.log(`★ ${killer.name} уничтожил пирата ${a.name}: награда ${bounty} кр.`, 'pilot', { s: sec.id });
         }
@@ -1334,7 +1357,7 @@ class World {
     return false;
   }
   depart(a) {
-    a.docked = null;
+    a.docked = null; a.lootTarget = null;
     const hop = this.N[a.loc][a.dest];
     if (hop < 0 || hop === a.loc) { a.dest = null; return; }
     const L = this.laneBetween(a.loc, hop);
@@ -1350,6 +1373,7 @@ class World {
     this.economy();
     for (const f of this.factions) this.factionAI(f);
     this.pirateAI();
+    if (this.supplyTick) this.supplyTick();
     this.movement();
     if (this.player) this.playerMove();
     this.updateLocal();
@@ -1358,6 +1382,7 @@ class World {
     await this.battlesStep();
     if (this.player) this.missionsTick();
     if (this.questDirector) { this.questDirector(); this.questDaily(); }
+    if (this.dropsTick) { this.dropsTick(); this.pilotsDaily(); }
     this.day++;
   }
 

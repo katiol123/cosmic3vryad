@@ -1,7 +1,7 @@
 // Прогон кампании без графики: node tools/world.js [дней] [зерно]
 const fs = require('fs'), vm = require('vm'), path = require('path');
 const root = path.join(__dirname, '..');
-for (const f of ['util', 'data', 'ship', 'board', 'ai', 'battle', 'world-data', 'world', 'world-player', 'quests', 'pilots'])
+for (const f of ['util', 'data', 'ship', 'board', 'ai', 'battle', 'world-data', 'world', 'world-player', 'quests', 'pilots', 'loot', 'supply'])
   vm.runInThisContext(fs.readFileSync(path.join(root, 'js', f + '.js'), 'utf8'), { filename: f + '.js' });
 Clock.instant = true;
 const DAYS = +process.argv[2] || 300, SEED = process.argv[3] != null ? +process.argv[3] : 12345;
