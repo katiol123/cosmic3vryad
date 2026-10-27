@@ -48,17 +48,20 @@ Object.assign(World.prototype, {
     return parts.join(', ') || 'пусто';
   },
   // трюм модулей: id и износ каждого трофея
-  stashAdd(a, id, wear = 0) {
+  stashAdd(a, id, wear = 0, ins = false) {
     (a.stash = a.stash || []).push(id);
     (a.stashW = a.stashW || []).length = a.stash.length - 1;
     a.stashW.push(wear);
+    (a.stashI = a.stashI || []).length = a.stash.length - 1;
+    a.stashI.push(!!ins);
   },
   stashWear(a, i) { return (a.stashW && a.stashW[i]) || 0; },
   stashTake(a, i) {
-    const id = a.stash[i], wear = this.stashWear(a, i);
+    const id = a.stash[i], wear = this.stashWear(a, i), ins = !!(a.stashI && a.stashI[i]);
     a.stash.splice(i, 1);
     if (a.stashW) a.stashW.splice(i, 1);
-    return { id, wear };
+    if (a.stashI) a.stashI.splice(i, 1);
+    return { id, wear, ins };
   },
   dropsIn(sid) { return (this.drops || []).filter(d => d.sector === sid); },
   dropById(id) { return (this.drops || []).find(d => d.id === id); },

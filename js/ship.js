@@ -15,18 +15,24 @@ function emptyDef(hullId, name) {
 function cloneDef(def) {
   const d = { name: def.name, hull: def.hull, slots: Object.fromEntries(SLOT_ORDER.map(k => [k, (def.slots[k] || []).slice()])) };
   if (def.wear) d.wear = Object.fromEntries(Object.entries(def.wear).map(([k, v]) => [k, v.slice()]));
+  if (def.ins) d.ins = Object.fromEntries(Object.entries(def.ins).map(([k, v]) => [k, v.slice()]));
   return d;
 }
 
 function setHull(def, hullId) {
   const h = HULLS[hullId];
-  const nd = { name: def.name, hull: hullId, slots: {}, wear: {} };
+  const nd = { name: def.name, hull: hullId, slots: {}, wear: {}, ins: {} };
+  // список снятых модулей — служебный, в сохранения не попадает
+  Object.defineProperty(nd, 'removed', { value: [], enumerable: false, writable: true, configurable: true });
   for (const k of SLOT_ORDER) {
     const n = h.slots[k] || 0;
-    // модули переезжают в новый корпус вместе со своим износом
-    const old = (def.slots[k] || []).map((id, i) => [id, slotWear(def, k, i)]).filter(x => x[0]);
+    // модули переезжают в новый корпус вместе со своим износом и страховой отметкой
+    const old = (def.slots[k] || []).map((id, i) => [id, slotWear(def, k, i), slotInsured(def, k, i)]).filter(x => x[0]);
     nd.slots[k] = new Array(n).fill(null).map((_, i) => old[i] ? old[i][0] : null);
     nd.wear[k] = new Array(n).fill(0).map((_, i) => old[i] ? old[i][1] : 0);
+    nd.ins[k] = new Array(n).fill(false).map((_, i) => old[i] ? old[i][2] : false);
+    // не поместившиеся по числу слотов — снимаются (их продаст вызывающий код)
+    for (const x of old.slice(n)) nd.removed.push({ id: x[0], wear: x[1], ins: x[2] });
   }
   return nd;
 }
@@ -38,6 +44,13 @@ const WEAR_SCALE = {
   reactor: ['ePer', 'eCap', 'ePass'], arsenal: ['aPer', 'aCap', 'aPass'], droid: ['rPer', 'rPass'],
   computer: ['acc', 'crit'], radar: ['range', 'acc', 'ev'], ew: ['power', 'ewRes', 'dPass'], armor: ['hp', 'armor'],
 };
+// страховой модуль (выдан бесплатно после гибели) — продаётся только как лом
+function slotInsured(def, cat, i) { return !!(def.ins && def.ins[cat] && def.ins[cat][i]); }
+function setInsured(def, cat, i, v) {
+  def.ins = def.ins || {};
+  def.ins[cat] = def.ins[cat] || new Array((def.slots[cat] || []).length).fill(false);
+  def.ins[cat][i] = !!v;
+}
 function slotWear(def, cat, i) { return (def.wear && def.wear[cat] && def.wear[cat][i]) || 0; }
 function setWear(def, cat, i, v) {
   def.wear = def.wear || {};

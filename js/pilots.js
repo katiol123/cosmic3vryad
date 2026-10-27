@@ -207,8 +207,8 @@ Object.assign(World.prototype, {
     for (const k of order) for (let i = nd.slots[k].length - 1; i >= 0 && defMass(nd) > H.cap; i--) {
       if (nd.slots[k][i]) { a.credits += this.sellValue(nd.slots[k][i], slotWear(nd, k, i)); nd.slots[k][i] = null; }
     }
-    const after = defItems(nd).map(i => i.id);
-    for (const it of defItems(a.def)) { const j = after.indexOf(it.id); if (j >= 0) after.splice(j, 1); else a.credits += this.sellValue(it.id, 0.3); }
+    for (const x of nd.removed || []) a.credits += this.sellValue(x.id, x.wear);
+    delete nd.removed;
     nd.name = a.name;
     a.def = nd;
     a.hp = null;

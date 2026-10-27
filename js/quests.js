@@ -148,7 +148,7 @@ Object.assign(World.prototype, {
     }
     const lost = f.st.lostToPirates;
     this.makeQuest('boss', f.idx, {
-      boss: boss.id, sector: base.sector, titleExtra: boss.name, reward: Math.round(4000 + this.strength(boss) * 8), rep: 18, deadline: this.day + 35,
+      boss: boss.id, sector: base.sector, titleExtra: boss.name, reward: Math.round(4000 + this.strength(boss) * 8), rep: 18, deadline: this.day + 50,
       reason: `пираты уничтожили уже ${lost} наших кораблей. Их ведёт ${boss.name} с базы «${base.name}». Награда — тому, кто его уничтожит.`,
     });
   },
@@ -159,7 +159,7 @@ Object.assign(World.prototype, {
     });
   },
   questAid(f, p, g) {
-    const qty = Math.round(this.target(p, g) * 0.6 + 15);
+    const qty = Math.round(this.target(p, g) * 0.4 + 10); // по силам обычному трюму за пару рейсов
     this.makeQuest('aid', f.idx, {
       planet: p.id, sector: p.sector, good: g, qty, delivered: 0, titleExtra: p.name, reward: Math.round(GOOD[g].base * qty * 0.8), rep: 14, deadline: this.day + 28,
       perUnit: Math.round(GOOD[g].base * 1.6),
@@ -342,7 +342,7 @@ Object.assign(World.prototype, {
         break;
       case 'convoy': {
         const E = this.factions[q.enemy];
-        const loot = Math.round(E.treasury * 0.15);
+        const loot = Math.max(0, Math.round(E.treasury * 0.15)); // с пустой казны врага взять нечего
         E.treasury -= loot; F.treasury += loot * 0.5;
         boost(`снабжение ${E.short} сорвано: её казна −${loot} кр., половина трофеев — в нашу казну.`);
         break;
@@ -533,7 +533,7 @@ Object.assign(World.prototype, {
       if (me < need * A.caution) continue;
       const far = q.sector != null ? this.hops(a.loc, q.sector) : 3;
       // бедный ценит деньги, богатый — репутацию
-      const v = (q.reward * (A.poor ? 1.4 : 1) + q.rep * (A.rich ? 250 : 120)) / (2 + far) * (0.6 + Math.random() * 0.8);
+      const v = (q.reward * (A.poor ? 1.4 : 1) + q.rep * (A.rich ? 250 : 120)) / (2 + far) * (far <= 2 ? 2 : 1) * (0.6 + Math.random() * 0.8);
       opts.push([v, q]);
     }
     if (!opts.length) return null;

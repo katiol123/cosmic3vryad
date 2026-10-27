@@ -598,7 +598,7 @@ const SectorUI = {
         const row = h('div', { class: 'slot' + (it ? ' full' : '') + (this.yardSlot && this.yardSlot.cat === k && this.yardSlot.i === i ? ' sel' : ''), onclick: () => { this.yardSlot = { cat: k, i }; this.renderDock(); } },
           h('span', { class: 'slot-ico' }, SLOT_TYPES[k].icon),
           it ? h('div', { class: 'slot-b' }, h('div', { class: 'nm' }, it.name, this.wearBadge(p.def, k, i)), h('div', { class: 'sh' }, Info.short(it))) : h('div', { class: 'slot-b empty' }, `${SLOT_TYPES[k].name}: пусто`),
-          it ? h('button', { class: 'ibtn danger', title: w.isInsured(id) ? `Страховой модуль — только как лом: ${Math.round(w.shopPrice(it) * 0.1)} кр.` : `Продать за ${w.sellValue(id, slotWear(p.def, k, i))} кр.`, onclick: e => { e.stopPropagation(); w.sellItem(k, i); Sound.click(); this.renderDock(); } }, '₵') : null);
+          it ? h('button', { class: 'ibtn danger', title: slotInsured(p.def, k, i) ? `Страховой модуль — только как лом: ${Math.round(w.shopPrice(it) * 0.1)} кр.` : `Продать за ${w.sellValue(id, slotWear(p.def, k, i))} кр.`, onclick: e => { e.stopPropagation(); w.sellItem(k, i); Sound.click(); this.renderDock(); } }, '₵') : null);
         if (it) Tip.bind(row, () => Info.tooltip(it));
         left.appendChild(row);
       });
@@ -616,9 +616,10 @@ const SectorUI = {
             h('div', { class: 'pr' }, h('span', null, 'установить'), h('button', { class: 'ibtn danger', title: `Продать за ${w.sellValue(id, wr)} кр.`, onclick: e => { e.stopPropagation(); w.sellStash(si); Sound.click(); this.renderDock(); } }, '₵')));
           row.addEventListener('click', () => {
             if (defMass(p.def) - (cur ? cur.mass : 0) + it.mass > cap) { this.toast('Не хватает вместимости', 'bad'); return; }
-            w.stashTake(p, si);
-            if (cur) w.stashAdd(p, cur.id, slotWear(p.def, S.cat, S.i));
+            const taken = w.stashTake(p, si);
+            if (cur) w.stashAdd(p, cur.id, slotWear(p.def, S.cat, S.i), slotInsured(p.def, S.cat, S.i));
             setWear(p.def, S.cat, S.i, wr);
+            setInsured(p.def, S.cat, S.i, taken.ins);
             p.def.slots[S.cat][S.i] = id;
             w.refreshKeep(p);
             Sound.special('make');
