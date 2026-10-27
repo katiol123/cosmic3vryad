@@ -62,7 +62,8 @@ Object.assign(World.prototype, {
       if (a.battle) continue;
       let tx = a.sx, ty = a.sy;
       const pl = this.player;
-      if (a.chase && pl && pl.alive && pl.loc === a.loc && !pl.travel) { tx = pl.sx; ty = pl.sy; }
+      if (a.docked != null) [tx, ty] = this.planetPos(this.planets[a.docked]);
+      else if (a.chase && pl && pl.alive && pl.loc === a.loc && !pl.travel) { tx = pl.sx; ty = pl.sy; }
       else if (a.task && a.task.planet != null && this.planets[a.task.planet].sector === a.loc) [tx, ty] = this.planetPos(this.planets[a.task.planet]);
       else if (a.faction === PIRATE) {
         const b = this.bases.find(x => x.id === a.base && x.alive && x.sector === a.loc);
@@ -97,6 +98,7 @@ Object.assign(World.prototype, {
       case 'ship': { const a = this.agents.get(t.id); return a && a.loc === this.player.loc && !a.travel ? [a.sx, a.sy] : null; }
       case 'battle': { const wb = this.battles.find(x => x.id === t.id); return wb ? [wb.sx, wb.sy] : null; }
       case 'base': return this.basePos(this.player.loc);
+      case 'quest': { const q = this.questById(t.id); return q && q.point && q.sector === this.player.loc ? q.point : null; }
     }
     return null;
   },
@@ -117,6 +119,13 @@ Object.assign(World.prototype, {
         // в конце маршрута — сразу к планете из задания, если она здесь
         const m = (this.missionsP || []).find(o => o.to != null && this.planets[o.to].sector === p.loc);
         if (m) { p.target = { type: 'planet', id: m.to }; this.log(`➤ Курс на ${this.planets[m.to].name} (задание).`, 'player'); }
+        // или к цели особого поручения
+        const q = p.questGoal != null && this.questById(p.questGoal);
+        if (q && q.status === 'open' && this.questSector(p, q) === p.loc) {
+          const t = this.questTarget(p, q);
+          if (t) { p.target = t; this.log(`➤ Курс на цель поручения «${q.title}».`, 'player'); }
+        }
+        p.questGoal = null;
       }
       return;
     }
@@ -142,6 +151,7 @@ Object.assign(World.prototype, {
         if (!this.friendlyPlanet(p, pl)) { this.log(`${pl.name}: в стыковке отказано (враждебная фракция).`, 'player'); p.target = null; return; }
         p.docked = pl.id; p.target = null;
         this.onDock(pl);
+        this.questOnDock(p, pl);
         if (this.hooks && this.hooks.dock) this.hooks.dock(pl);
         return;
       }
@@ -165,6 +175,10 @@ Object.assign(World.prototype, {
         p.target = null;
         return;
       }
+      case 'point': case 'quest':
+        p.target = null;
+        this.questReach(p);
+        return;
       default: p.target = null;
     }
   },
@@ -269,6 +283,7 @@ Object.assign(World.prototype, {
     const n = Math.max(0, Math.min(qty, Math.floor(p.cargo[good] || 0)));
     if (!n) return 0;
     p.credits += n * pl.price[good] * 0.92;
+    this.questOnDeliver(p, pl, good, n);
     pl.stock[good] += n;
     p.cargo[good] -= n;
     if (p.cargo[good] <= 0) delete p.cargo[good];

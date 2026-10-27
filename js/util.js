@@ -79,6 +79,8 @@ const U = (() => {
       outBack: t => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); },
       outElastic: t => (t === 0 || t === 1 ? t : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (2 * Math.PI) / 3) + 1),
     },
+    // append без «null» в тексте: пустые элементы пропускаются
+    add(el, ...kids) { for (const k of kids.flat(Infinity)) if (k != null && k !== false) el.append(k); return el; },
     // DOM-хелпер: h('div', {class:'x', onclick:fn}, 'текст', child)
     h(tag, attrs, ...kids) {
       const el = document.createElement(tag);

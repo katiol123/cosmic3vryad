@@ -152,6 +152,7 @@ const SectorUI = {
     const s = w.sectors[sid];
     for (const pid of s.planets) { const p = w.planets[pid]; const [x, y] = w.planetPos(p, w.day - 1 + this.animK()); out.push({ type: 'planet', id: p.id, x, y, r: 22 + p.size * 20 }); }
     for (const n of w.neighbors(sid)) { const [x, y] = w.gatePos(sid, n); out.push({ type: 'gate', to: n, x, y, r: 34 }); }
+    for (const q of w.openQuests()) if (q.sector === sid && q.point && !(q.type === 'relic' && q.stage === 1)) out.push({ type: 'quest', id: q.id, x: q.point[0], y: q.point[1], r: QUEST_POINT_R });
     if (s.base) { const [x, y] = w.basePos(sid); out.push({ type: 'base', id: s.base, x, y, r: 34 }); }
     for (const wb of w.battles) if (wb.sector === sid && wb.sx != null) out.push({ type: 'battle', id: wb.id, x: wb.sx, y: wb.sy, r: 70 });
     for (const a of w.agents.values()) {
@@ -198,6 +199,7 @@ const SectorUI = {
     else if (o.type === 'gate') this.setCourse({ type: 'gate', to: o.to });
     else if (o.type === 'point') this.setCourse({ type: 'point', x: o.x, y: o.y });
     else if (o.type === 'base') this.setCourse({ type: 'point', x: o.x * 0.9, y: o.y * 0.9 });
+    else if (o.type === 'quest') this.setCourse({ type: 'quest', id: o.id });
     this.tab = 'target';
     this.refresh();
   },
@@ -375,20 +377,20 @@ const SectorUI = {
     if (!o) { B.appendChild(h('div', { class: 'empty-note' }, 'Выберите объект в секторе: планету, ворота, корабль или бой.')); this.renderSectorList(); return; }
     if (o.type === 'planet') {
       const pl = w.planets[o.id], f = pl.owner >= 0 ? w.factions[pl.owner] : null;
-      B.append(h('div', { class: 'ph' }, pl.name), h('img', { class: 'sx-plimg', src: GFX.planet(pl, 120).canvas.toDataURL() }),
+      U.add(B, h('div', { class: 'ph' }, pl.name), h('img', { class: 'sx-plimg', src: GFX.planet(pl, 120).canvas.toDataURL() }),
         h('div', { class: 'fs' }, pl.pop > 0 ? `${PLANET_TYPES[pl.type].name} · 👥 ${pl.pop.toFixed(1)} млн · стабильность ${Math.round(pl.stability * 100)}%` : 'Необитаемая планета'),
         f ? h('div', { class: 'fs', style: { color: f.color } }, f.name + (pl.shipyard ? ` · верфь ТУ ${U.roman(pl.shipyard)}` : '')) : null,
         pl.pop > 0 ? h('button', { class: 'btn primary', onclick: () => { if (p.docked === pl.id) this.openDock(pl); else this.setCourse({ type: 'planet', id: pl.id }); this.refresh(); } }, p.docked === pl.id ? '🛰 Открыть станцию' : '➤ Лететь и пристыковаться') : null);
     } else if (o.type === 'gate') {
       const s = w.sectors[o.to], f = s.owner >= 0 ? w.factions[s.owner] : null;
-      B.append(h('div', { class: 'ph' }, 'Гиперворота → ' + s.name), h('div', { class: 'fs', style: { color: f ? f.color : '#aaa' } }, f ? f.name : 'ничейный сектор'),
+      U.add(B, h('div', { class: 'ph' }, 'Гиперворота → ' + s.name), h('div', { class: 'fs', style: { color: f ? f.color : '#aaa' } }, f ? f.name : 'ничейный сектор'),
         s.base ? h('div', { class: 'fs red' }, '☠ там пиратская база') : null,
         h('button', { class: 'btn primary', onclick: () => { this.setCourse({ type: 'gate', to: o.to }); this.refresh(); } }, '➤ Лететь к воротам'));
     } else if (o.type === 'ship') {
       const a = w.agents.get(o.id);
       if (!a) { B.appendChild(h('div', { class: 'empty-note' }, 'Корабль покинул сектор')); return; }
       const hostile = w.hostile(p, a);
-      B.append(h('div', { class: 'ph' }, AGENT_KINDS[a.kind].icon + ' ' + w.who(a)), h('img', { class: 'gx-shipimg', src: GFX.shipImage(a.def.hull, a.faction === PIRATE ? 1 : 0, 160) }),
+      U.add(B, h('div', { class: 'ph' }, AGENT_KINDS[a.kind].icon + ' ' + w.who(a)), h('img', { class: 'gx-shipimg', src: GFX.shipImage(a.def.hull, a.faction === PIRATE ? 1 : 0, 160) }),
         h('div', { class: 'fs' }, `${HULLS[a.def.hull].name} · корпус ${Math.round(a.hp)}/${a.maxHp}`),
         h('div', { class: 'fs' }, GalaxyUI.taskText.call({ world: w }, a)),
         h('div', { class: 'fs' }, 'Оружие: ' + (a.s.weapons.map(x => x.it.base).join(', ') || 'нет')),
@@ -400,17 +402,17 @@ const SectorUI = {
       const wb = w.battles.find(x => x.id === o.id);
       if (!wb) { B.appendChild(h('div', { class: 'empty-note' }, 'Бой завершён')); return; }
       const sideNames = s => wb.b.ships.filter(sh => sh.side === s && sh.alive).map(sh => { const a = w.agents.get(sh.ref); return a ? w.who(a) : sh.name; });
-      B.append(h('div', { class: 'ph' }, '⚔ Бой'), h('div', { class: 'gx-bt', html: GalaxyUI.battleText.call({ world: w }, wb) }));
+      U.add(B, h('div', { class: 'ph' }, '⚔ Бой'), h('div', { class: 'gx-bt', html: GalaxyUI.battleText.call({ world: w }, wb) }));
       if (!p.battle) {
-        B.append(h('div', { class: 'row' },
+        U.add(B, h('div', { class: 'row' },
           h('button', { class: 'btn', onclick: () => { this.setCourse({ type: 'battle', id: wb.id, side: 0 }); this.refresh(); } }, `⚑ За: ${sideNames(0)[0] || '—'}`),
           h('button', { class: 'btn', onclick: () => { this.setCourse({ type: 'battle', id: wb.id, side: 1 }); this.refresh(); } }, `⚑ За: ${sideNames(1)[0] || '—'}`)),
           h('div', { class: 'fs dim' }, 'Корабль долетит до места боя и вступит в него на выбранной стороне.'));
       }
-      B.append(h('div', { class: 'gx-log' }, wb.b.log.slice(-15).map(e => h('div', { class: 'le ' + e.cls + ' s' + e.side }, e.text))));
+      U.add(B, h('div', { class: 'gx-log' }, wb.b.log.slice(-15).map(e => h('div', { class: 'le ' + e.cls + ' s' + e.side }, e.text))));
     } else if (o.type === 'base') {
       const bs = w.bases.find(x => x.id === o.id);
-      B.append(h('div', { class: 'ph' }, '☠ ' + (bs ? bs.name : 'База')), h('div', { class: 'fs' }, bs ? `Богатство ${Math.round(bs.wealth)} · оборона ${Math.round(bs.defense)}` : ''),
+      U.add(B, h('div', { class: 'ph' }, '☠ ' + (bs ? bs.name : 'База')), h('div', { class: 'fs' }, bs ? `Богатство ${Math.round(bs.wealth)} · оборона ${Math.round(bs.defense)}` : ''),
         h('div', { class: 'fs dim' }, 'Пиратская база. Её охраняют пираты, а штурмуют её карательные экспедиции фракций.'));
     }
   },
@@ -429,6 +431,13 @@ const SectorUI = {
   },
   renderMissions() {
     const w = this.world, B = this.els.body;
+    const mineQ = w.pilotQuests(w.player);
+    B.appendChild(h('div', { class: 'ph sm' }, `Особые поручения: ваши (${mineQ.length})`));
+    for (const q of mineQ) B.appendChild(this.questCard(q, true));
+    const rest = w.openQuests().filter(q => !mineQ.includes(q));
+    B.appendChild(h('div', { class: 'ph sm' }, `Объявлены в галактике (${rest.length})`));
+    for (const q of rest) B.appendChild(this.questCard(q, true));
+    B.appendChild(h('div', { class: 'ph sm' }, 'Обычные задания'));
     const ms = w.missionsP || [];
     if (!ms.length) B.appendChild(h('div', { class: 'empty-note' }, 'Нет активных заданий. Их выдают на планетах фракций (вкладка «Задания» при стыковке).'));
     for (const o of ms) {
@@ -448,7 +457,7 @@ const SectorUI = {
   },
   renderPilot() {
     const w = this.world, B = this.els.body, p = w.player;
-    B.append(h('div', { class: 'ph' }, p.name), h('div', { class: 'fs' }, `Кредиты: ${Math.round(p.credits).toLocaleString('ru')} · уничтожено кораблей: ${p.kills}`),
+    U.add(B, h('div', { class: 'ph' }, p.name), h('div', { class: 'fs' }, `Кредиты: ${Math.round(p.credits).toLocaleString('ru')} · уничтожено кораблей: ${p.kills}`),
       h('div', { class: 'fs' }, p.member >= 0 ? `На службе: ${w.factions[p.member].name}` : 'Свободный наёмник'),
       h('div', { class: 'ph sm' }, 'Репутация'));
     const list = h('div', { class: 'gx-rel' });
@@ -459,7 +468,7 @@ const SectorUI = {
         h('i', { class: 'relbar' }, h('b', { style: { width: Math.abs(v) / 2 + '%', left: v < 0 ? (50 - Math.abs(v) / 2) + '%' : '50%', background: v < 0 ? '#ff4d6d' : '#2ee66b' } })),
         h('span', { class: v <= -50 ? 'red' : '' }, String(v))));
     }
-    B.append(list, h('div', { class: 'fs dim' }, 'Репутация растёт за задания и уничтожение пиратов. От 30 можно поступить на службу. При −50 фракция считает вас врагом.'),
+    U.add(B, list, h('div', { class: 'fs dim' }, 'Репутация растёт за задания и уничтожение пиратов. От 30 можно поступить на службу. При −50 фракция считает вас врагом.'),
       h('div', { class: 'ph sm' }, 'Корабль'), h('div', { class: 'stats' }, Info.shipLines(p.s).map(([k, v]) => Info.statRow(k, v))));
   },
   renderNews() {
@@ -524,7 +533,7 @@ const SectorUI = {
           h('button', { class: 'ibtn', title: 'Продать 10', onclick: act(w.playerSell, 10) }, '−10'),
           h('button', { class: 'ibtn', title: 'Продать всё', onclick: act(w.playerSell, 9999) }, 'всё'))));
     }
-    B.append(tbl, h('div', { class: 'fs dim' }, 'Зелёная цена — товар здесь дёшев, красная — дорог. Цены меняются от запасов: продажа насыщает рынок. Поставка еды и медикаментов на планету с дефицитом повышает репутацию.'));
+    U.add(B, tbl, h('div', { class: 'fs dim' }, 'Зелёная цена — товар здесь дёшев, красная — дорог. Цены меняются от запасов: продажа насыщает рынок. Поставка еды и медикаментов на планету с дефицитом повышает репутацию.'));
   },
   dkYard(B) {
     const w = this.world, pl = this.dockPl, p = w.player;
@@ -548,6 +557,26 @@ const SectorUI = {
     const S = this.yardSlot;
     if (S && p.def.slots[S.cat] && S.i < p.def.slots[S.cat].length) {
       const cur = p.def.slots[S.cat][S.i] ? ITEMS[p.def.slots[S.cat][S.i]] : null;
+      // трофеи и реликвии из трюма — установка бесплатно
+      const stash = (p.stash || []).filter(id => ITEMS[id] && ITEMS[id].cat === S.cat);
+      if (stash.length) {
+        right.appendChild(h('div', { class: 'ph sm' }, 'Из трюма (трофеи)'));
+        for (const id of stash) {
+          const it = ITEMS[id];
+          const row = h('div', { class: 'pick-row cur' }, h('span', { class: 'tier' }, '✧'), h('div', { class: 'pb' }, h('div', { class: 'nm' }, it.name), h('div', { class: 'sh' }, Info.short(it))), h('div', { class: 'pr' }, 'установить'));
+          row.addEventListener('click', () => {
+            if (defMass(p.def) - (cur ? cur.mass : 0) + it.mass > cap) { this.toast('Не хватает вместимости', 'bad'); return; }
+            p.stash.splice(p.stash.indexOf(id), 1);
+            if (cur) p.stash.push(cur.id);
+            p.def.slots[S.cat][S.i] = id;
+            w.refreshKeep(p);
+            Sound.special('make');
+            this.renderDock();
+          });
+          Tip.bind(row, () => Info.tooltip(it));
+          right.appendChild(row);
+        }
+      }
       right.appendChild(h('div', { class: 'ph sm' }, `Купить: ${SLOT_TYPES[S.cat].name}`));
       const items = w.shopItems(pl, S.cat).sort((a, b) => a.tier - b.tier || a.price - b.price);
       if (!items.length) right.appendChild(h('div', { class: 'empty-note' }, 'Здесь такое не продают'));
@@ -582,12 +611,52 @@ const SectorUI = {
   dkRepair(B) {
     const w = this.world, p = w.player;
     const c = w.repairCost();
-    B.append(h('div', { class: 'gauge hp big' }, h('i', { style: { width: (p.hp / p.maxHp * 100) + '%' } }), h('span', null, `Корпус ${Math.round(p.hp)} / ${p.maxHp}`)),
+    U.add(B, h('div', { class: 'gauge hp big' }, h('i', { style: { width: (p.hp / p.maxHp * 100) + '%' } }), h('span', null, `Корпус ${Math.round(p.hp)} / ${p.maxHp}`)),
       c > 0 ? h('button', { class: 'btn primary big', onclick: () => { w.repair(); Sound.special('cleanse'); this.renderDock(); } }, `✚ Полный ремонт: ${c} кр.`) : h('div', { class: 'empty-note' }, 'Корабль в полном порядке'),
       h('div', { class: 'fs dim' }, 'Щиты восстанавливаются сами вне боя. Ремонтный дроид понемногу чинит корпус и в пути.'));
   },
+  questCard(q, compact) {
+    const w = this.world, p = w.player, F = w.factions[q.giver];
+    const mine = q.taken === p.id || q.takers.includes(p.id);
+    const others = q.takers.filter(id => id !== p.id).map(id => w.agents.get(id)).filter(Boolean);
+    const err = w.canTake(p, q);
+    let progress = '';
+    if (q.type === 'aid') progress = `Собрано ${q.delivered}/${q.qty} · за единицу ${q.perUnit} кр.`;
+    if (q.type === 'convoy') progress = `Ваш счёт: ${q.kills[p.id] || 0}/${q.count}`;
+    if (q.type === 'relic') progress = q.stage === 1 ? (q.holder === p.id ? 'Реликвия у вас — доставьте в столицу ' + F.short : 'Реликвию забрал ' + w.who(w.agents.get(q.holder))) : q.dropped ? 'Реликвия лежит на месте гибели носителя' : 'Аномалия ждёт';
+    const box = h('div', { class: 'gx-pl quest' + (mine ? ' mine' : '') },
+      h('div', { class: 'pn' }, q.title, h('span', { style: { color: F.color } }, ' · ' + F.short)),
+      compact ? null : h('div', { class: 'fs' }, '«' + q.reason + '»'),
+      h('div', { class: 'fs' }, `Награда: ${q.reward} кр. · репутация +${q.rep} · осталось ${q.deadline - w.day} дн.${q.sector != null ? ' · сектор ' + w.sectors[q.sector].name : ''}`),
+      progress ? h('div', { class: 'fs gold' }, progress) : null,
+      others.length ? h('div', { class: 'fs dim' }, (q.exclusive ? 'Взял: ' : 'Тоже взялись: ') + others.map(a => a.name).join(', ')) : null,
+      h('div', { class: 'row' },
+        !mine ? h('button', { class: 'btn', disabled: err ? true : null, title: err || '', onclick: () => { const e = w.questTake(p, q); if (e) this.toast(e, 'bad'); else this.toast('Вы взялись за поручение', 'me'); this.dockPl ? this.renderDock() : this.refresh(); } }, err || 'Взяться') : h('span', { class: 'fs gold' }, '✔ Вы участвуете'),
+        q.sector != null ? h('button', { class: 'btn ghost', onclick: () => this.courseToQuest(q) }, '🧭 Курс') : null,
+        q.type === 'relic' && q.holder === p.id ? h('button', { class: 'btn ghost', onclick: () => { w.questKeepRelic(q); this.toast('Реликвия теперь в вашем трюме', 'me'); this.refresh(); } }, 'Оставить себе') : null));
+    return box;
+  },
+  courseToQuest(q) {
+    const w = this.world, p = w.player;
+    const sec = w.questSector(p, q);
+    if (sec == null) return;
+    this.closeDock(); w.undock();
+    p.questGoal = q.id;
+    if (p.loc === sec) p.target = w.questTarget(p, q);
+    else { p.route = sec; p.target = { type: 'gate', to: w.N[p.loc][sec] }; }
+    this.toast('Курс проложен', 'me');
+    this.refresh();
+  },
+
   dkMissions(B) {
     const w = this.world, pl = this.dockPl;
+    const special = w.openQuests().filter(q => q.giver === pl.owner || q.takers.includes(w.player.id));
+    B.appendChild(h('div', { class: 'ph sm' }, 'Особые поручения'));
+    if (!special.length) B.appendChild(h('div', { class: 'empty-note' }, 'У фракции сейчас нет особых нужд.'));
+    for (const q of special) B.appendChild(this.questCard(q));
+    const elsewhere = w.openQuests().filter(q => !special.includes(q));
+    if (elsewhere.length) B.appendChild(h('div', { class: 'fs dim' }, `Другие фракции объявили ещё ${elsewhere.length} поручений — смотрите вкладку «Задания» или новости.`));
+    B.appendChild(h('div', { class: 'ph sm' }, 'Обычные задания'));
     const offers = w.offers(pl);
     if (!offers.length) B.appendChild(h('div', { class: 'empty-note' }, 'Заданий сейчас нет. Загляните через несколько дней.'));
     for (const o of offers) {
@@ -604,13 +673,13 @@ const SectorUI = {
     const w = this.world, pl = this.dockPl, p = w.player;
     if (pl.owner < 0) { B.appendChild(h('div', { class: 'empty-note' }, 'Независимая планета — здесь нет фракции.')); return; }
     const f = w.factions[pl.owner], rep = Math.round(p.rep[f.idx] || 0);
-    B.append(h('div', { class: 'ph', style: { color: f.color } }, f.name),
+    U.add(B, h('div', { class: 'ph', style: { color: f.color } }, f.name),
       h('div', { class: 'fs' }, `Планет: ${w.factionPlanets(f.idx).length} · казна ${Math.round(f.treasury).toLocaleString('ru')} · ТУ ${U.roman(f.tech)}`),
       h('div', { class: 'fs' }, f.wars.size ? '⚔ Война с: ' + [...f.wars].map(x => w.factions[x].short).join(', ') : 'Ни с кем не воюет'),
       h('div', { class: 'fs' }, `Ваша репутация: ${rep}`));
-    if (p.member === f.idx) B.append(h('div', { class: 'fs' }, 'Вы на службе этой фракции: жалованье 30 кр. в день, враги фракции — ваши враги.'), h('button', { class: 'btn danger', onclick: () => { w.leaveFaction(); this.renderDock(); } }, 'Уйти со службы'));
-    else if (p.member >= 0) B.append(h('div', { class: 'fs dim' }, `Вы служите фракции ${w.factions[p.member].short}.`));
-    else B.append(h('button', { class: 'btn primary', disabled: rep < 30 ? true : null, onclick: () => { if (w.joinFaction(f.idx)) { Sound.victory(true); this.renderDock(); } } }, rep < 30 ? `Поступить на службу (нужна репутация 30)` : 'Поступить на службу'));
+    if (p.member === f.idx) U.add(B, h('div', { class: 'fs' }, 'Вы на службе этой фракции: жалованье 30 кр. в день, враги фракции — ваши враги.'), h('button', { class: 'btn danger', onclick: () => { w.leaveFaction(); this.renderDock(); } }, 'Уйти со службы'));
+    else if (p.member >= 0) U.add(B, h('div', { class: 'fs dim' }, `Вы служите фракции ${w.factions[p.member].short}.`));
+    else U.add(B, h('button', { class: 'btn primary', disabled: rep < 30 ? true : null, onclick: () => { if (w.joinFaction(f.idx)) { Sound.victory(true); this.renderDock(); } } }, rep < 30 ? `Поступить на службу (нужна репутация 30)` : 'Поступить на службу'));
   },
   dkNews(B) {
     const w = this.world;
@@ -729,6 +798,24 @@ const SectorUI = {
       ctx.drawImage(st, -sz / 2, -sz / 2, sz, sz);
       ctx.restore();
     }
+    // маяки особых поручений в этом секторе
+    for (const q of w.openQuests()) {
+      if (q.sector !== sid || !q.point || (q.type === 'relic' && q.stage === 1)) continue;
+      const [x, y] = S(q.point[0], q.point[1]);
+      const mine = q.takers.includes(w.player.id);
+      const pul = 0.5 + 0.5 * Math.sin(this.t * 4 + q.id);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const col = q.type === 'relic' ? '#c77dff' : q.type === 'recon' ? '#ff9e6b' : '#7df9ff';
+      const g = ctx.createRadialGradient(x, y, 0, x, y, (QUEST_POINT_R * z + 10 * d));
+      g.addColorStop(0, U.rgba(col, 0.25 + pul * 0.2)); g.addColorStop(1, U.rgba(col, 0));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, QUEST_POINT_R * z + 10 * d, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = U.rgba(col, mine ? 0.9 : 0.45); ctx.lineWidth = 1.5 * d; ctx.setLineDash([4 * d, 4 * d]);
+      ctx.beginPath(); ctx.arc(x, y, QUEST_POINT_R * z, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.font = `700 ${11 * d}px "Exo 2", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.fillStyle = col; ctx.fillText(q.title, x, y - QUEST_POINT_R * z - 4 * d);
+    }
     // путь игрока
     const p = w.player;
     const ppos = this.playerPos();
@@ -809,6 +896,7 @@ const SectorUI = {
         ctx.fillStyle = col; ctx.fillText(me ? 'ВЫ' : w.who(a), x, y - len * 0.6);
       }
       if (sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5 * d; ctx.beginPath(); ctx.arc(x, y, len * 0.75, 0, Math.PI * 2); ctx.stroke(); }
+      if (a.boss) { ctx.font = `${13 * d}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillStyle = '#ffe066'; ctx.fillText('👑', x, y - len * 0.6 - 12 * d); }
       if (a.chase && w.player && a.chase === w.player.id) {
         ctx.fillStyle = '#ff4d4d'; ctx.font = `${12 * d}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('⚠', x, y + len * 0.9);
       }

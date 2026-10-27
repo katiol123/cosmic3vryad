@@ -190,6 +190,7 @@ const GalaxyUI = {
       case 'home': return `везёт добычу на базу (${Math.round(a.loot)} кр.)`;
       case 'courier': return `курьер для ${w.factions[T.faction].short} → ${P} (+${T.reward} кр.)`;
       case 'goto': return `летит в ${sec}`;
+      case 'quest': case 'questDock': { const q = w.questById && w.questById(T.quest); return q ? `поручение: ${q.title}` : 'особое поручение'; }
     }
     return T.type;
   },
@@ -307,7 +308,7 @@ const GalaxyUI = {
         h('div', { class: 'fb' },
           h('div', { class: 'fn' }, p.name, p.member >= 0 ? h('span', { style: { color: w.factions[p.member].color } }, ` [${w.factions[p.member].short}]`) : h('span', { class: 'dim' }, ' [наёмник]')),
           h('div', { class: 'fs' }, `${HULLS[p.def.hull].name} · 💰 ${Math.round(p.credits).toLocaleString('ru')} · ☠ ${p.kills}`),
-          h('div', { class: 'fs dim' }, this.taskText(p))));
+          h('div', { class: 'fs dim' }, (p.intent && p.ctrl !== 'human' ? '🧠 ' + p.intent + ' · ' : '') + this.taskText(p))));
       B.appendChild(row);
     }
   },
@@ -355,22 +356,23 @@ const GalaxyUI = {
       const a = w.agents.get(S.id);
       if (!a) { B.appendChild(h('div', { class: 'empty-note' }, 'Корабль больше не существует')); return; }
       const st = a.s;
-      B.append(
+      B.appendChild(h('div', null,
         h('div', { class: 'ph' }, AGENT_KINDS[a.kind].icon + ' ' + w.who(a)),
         h('img', { class: 'gx-shipimg', src: GFX.shipImage(a.def.hull, a.faction === PIRATE ? 1 : 0, 160) }),
         h('div', { class: 'fs' }, `${HULLS[a.def.hull].name} · корпус ${Math.round(a.hp)}/${a.maxHp} · щит ${st.maxShield}`),
         h('div', { class: 'fs' }, `Задание: ${this.taskText(a)}`),
         h('div', { class: 'fs' }, `Скорость: ${Math.round(a.speed)} ед./день · трюм ${Math.round(w.cargoUsed(a))}/${a.cargoCap}`),
         a.kind === 'pilot' ? h('div', { class: 'fs' }, `Кредиты: ${Math.round(a.credits).toLocaleString('ru')} · уничтожено: ${a.kills} · ${a.member >= 0 ? 'служит: ' + w.factions[a.member].name : 'свободный наёмник'}`) : null,
+        a.kind === 'pilot' && a.ctrl !== 'human' ? (() => { const A = w.assess(a); return h('div', { class: 'fs' }, `🧠 ${a.intent || 'думает'} · сила ${Math.round(A.power * 100)}% от типичного пирата${A.weak ? ' — избегает драк' : A.strong ? ' — ищет драки' : ''}${A.poor ? ' · мало денег — ищет заработок' : ''}`); })() : null,
         a.kind === 'pilot' ? h('div', { class: 'fs dim' }, 'Репутация: ' + (Object.entries(a.rep).filter(([, v]) => Math.abs(v) >= 3).map(([f, v]) => `${w.factions[f].short} ${v > 0 ? '+' : ''}${Math.round(v)}`).join(', ') || 'нет')) : null,
         a.loot ? h('div', { class: 'fs' }, `Добыча: ${Math.round(a.loot)} кр.`) : null,
         Object.keys(a.cargo).length ? h('div', { class: 'fs' }, 'Груз: ' + Object.entries(a.cargo).map(([g, q]) => `${GOOD[g].icon} ${GOOD[g].name} ×${Math.round(q)}`).join(', ')) : null,
         h('div', { class: 'ph sm' }, 'Вооружение'),
-        h('div', { class: 'fs' }, st.weapons.map(x => x.it.name).join(', ') || 'нет'));
+        h('div', { class: 'fs' }, st.weapons.map(x => x.it.name).join(', ') || 'нет')));
     } else if (S.type === 'battle') {
       const wb = w.battles.find(x => x.id === S.id);
       if (!wb) { B.appendChild(h('div', { class: 'empty-note' }, 'Бой завершён')); return; }
-      B.append(h('div', { class: 'ph' }, '⚔ Бой в секторе ' + w.sectors[wb.sector].name), h('div', { class: 'gx-bt', html: this.battleText(wb) }),
+      U.add(B, h('div', { class: 'ph' }, '⚔ Бой в секторе ' + w.sectors[wb.sector].name), h('div', { class: 'gx-bt', html: this.battleText(wb) }),
         h('div', { class: 'fs dim' }, `За день проходит ${BATTLE_ROUNDS_PER_DAY} раунда боя — прилетающие корабли могут вступить в бой.`),
         h('div', { class: 'gx-log' }, wb.b.log.slice(-25).map(e => h('div', { class: 'le ' + e.cls + ' s' + e.side }, e.text))));
     }
@@ -495,6 +497,16 @@ const GalaxyUI = {
           ctx.stroke(); ctx.setLineDash([]);
         }
       }
+    }
+    // особые поручения
+    for (const q of (w.openQuests ? w.openQuests() : [])) {
+      if (q.sector == null) continue;
+      const s = w.sectors[q.sector];
+      const [x, y] = S(s.x - 26, s.y - 26);
+      const mine = w.player && q.takers.includes(w.player.id);
+      ctx.font = `${(mine ? 16 : 13) * d}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = mine ? '#ffe066' : 'rgba(125,249,255,0.85)';
+      ctx.fillText(QUEST_TYPES[q.type].icon, x, y);
     }
     // игрок и его маршрут
     if (w.player && w.player.alive) {

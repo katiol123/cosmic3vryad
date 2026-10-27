@@ -594,3 +594,7 @@ select { background: rgba(10,16,36,.9); border: 1px solid var(--line); border-ra
   .mk-row { grid-template-columns: 1.3fr .5fr .5fr .6fr .5fr; }
   .mk-btns { grid-column: 1 / -1; }
 }
+.gx-pl.quest { border-color: rgba(125,249,255,.35); }
+.gx-pl.quest.mine { border-color: rgba(255,224,102,.7); box-shadow: 0 0 12px rgba(255,224,102,.15); }
+.gx-pl.quest .row { margin-top: 6px; }
+.ev.quest { border-color: #7df9ff; color: #c7f6ff; } .ev.buff { border-color: #2ee66b; color: #b6ffcf; } .ev.player { border-color: #ffe066; color: #ffe9a8; }
