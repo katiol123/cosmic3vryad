@@ -363,7 +363,7 @@ const GalaxyUI = {
         h('div', { class: 'fs' }, `Задание: ${this.taskText(a)}`),
         h('div', { class: 'fs' }, `Скорость: ${Math.round(a.speed)} ед./день · трюм ${Math.round(w.cargoUsed(a))}/${a.cargoCap}`),
         a.kind === 'pilot' ? h('div', { class: 'fs' }, `Кредиты: ${Math.round(a.credits).toLocaleString('ru')} · уничтожено: ${a.kills} · ${a.member >= 0 ? 'служит: ' + w.factions[a.member].name : 'свободный наёмник'}`) : null,
-        a.kind === 'pilot' && a.ctrl !== 'human' ? (() => { const A = w.assess(a); return h('div', { class: 'fs' }, `🧠 ${a.intent || 'думает'} · сила ${Math.round(A.power * 100)}% от типичного пирата${A.weak ? ' — избегает драк' : A.strong ? ' — ищет драки' : ''}${A.poor ? ' · мало денег — ищет заработок' : ''}`); })() : null,
+        a.kind === 'pilot' && a.ctrl !== 'human' ? h('div', { class: 'fs' }, '🧠 ' + (a.intent || 'думает')) : null,
         a.kind === 'pilot' ? h('div', { class: 'fs dim' }, 'Репутация: ' + (Object.entries(a.rep).filter(([, v]) => Math.abs(v) >= 3).map(([f, v]) => `${w.factions[f].short} ${v > 0 ? '+' : ''}${Math.round(v)}`).join(', ') || 'нет')) : null,
         a.loot ? h('div', { class: 'fs' }, `Добыча: ${Math.round(a.loot)} кр.`) : null,
         Object.keys(a.cargo).length ? h('div', { class: 'fs' }, 'Груз: ' + Object.entries(a.cargo).map(([g, q]) => `${GOOD[g].icon} ${GOOD[g].name} ×${Math.round(q)}`).join(', ')) : null,
