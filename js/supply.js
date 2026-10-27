@@ -14,6 +14,15 @@ Object.assign(World.prototype, {
   // всё, что верфь может продавать: производители фракции и уровень верфи
   yardCatalog(pl) {
     if (!pl.shipyard) return { items: [], hulls: [] };
+    // каталог зависит только от владельца и уровня верфи — кэшируем
+    const key = pl.id + ':' + pl.owner + ':' + this.yardTier(pl);
+    this._cat = this._cat || new Map();
+    if (this._cat.has(key)) return this._cat.get(key);
+    const C = this.yardCatalogRaw(pl);
+    this._cat.set(key, C);
+    return C;
+  },
+  yardCatalogRaw(pl) {
     const makers = this.yardMakers(pl), t = this.yardTier(pl);
     const items = Object.values(ITEMS).filter(it => it.cat !== 'artifact' && it.tier <= t && makers.includes(it.maker))
       .concat(t >= 4 ? itemsFor('artifact').filter((_, i) => (i + pl.id) % 4 === 0) : []);

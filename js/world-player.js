@@ -306,7 +306,7 @@ Object.assign(World.prototype, {
     const p = this.player;
     if ((p.rep[f] || 0) < 30) return false;
     p.member = f;
-    this.log(`⚑ Вы поступили на службу: ${this.factions[f].name}. Жалованье — 30 кр. в день.`, 'player', { f: [f] });
+    this.log(`⚑ Вы поступили на службу: ${this.factions[f].name} в звании «${this.rankName(p, f)}». Жалованье — ${this.salary(p)} кр. в день.`, 'player', { f: [f] });
     return true;
   },
   leaveFaction() {
@@ -381,11 +381,17 @@ Object.assign(World.prototype, {
     return HULL_LIST.filter(h => h.tier <= t && makers.includes(h.maker));
   },
   shopPrice(x) { return Math.round(x.price * SHOP_K); },
+  // цена для игрока на текущей верфи: служащим фракции — скидка по званию
+  buyPrice(x) {
+    const p = this.player, pl = p && p.docked != null ? this.planets[p.docked] : null;
+    const disc = pl && this.rankDiscount ? this.rankDiscount(p, pl.owner) : 0;
+    return Math.round(this.shopPrice(x) * (1 - disc));
+  },
   buyItem(cat, idx, id) {
     const p = this.player, it = ITEMS[id];
     const old = p.def.slots[cat][idx] ? ITEMS[p.def.slots[cat][idx]] : null;
     const insOld = old && slotInsured(p.def, cat, idx);
-    const cost = this.shopPrice(it) - (old ? (insOld ? Math.round(this.shopPrice(old) * 0.1) : this.sellValue(old.id, slotWear(p.def, cat, idx))) : 0);
+    const cost = this.buyPrice(it) - (old ? (insOld ? Math.round(this.shopPrice(old) * 0.1) : this.sellValue(old.id, slotWear(p.def, cat, idx))) : 0);
     if (p.credits < cost) return 'Не хватает кредитов';
     if (defMass(p.def) - (old ? old.mass : 0) + it.mass > HULLS[p.def.hull].cap) return 'Не хватает вместимости корпуса';
     if (cat === 'artifact' && p.def.slots.artifact.includes(id)) return 'Такой артефакт уже установлен';
@@ -412,7 +418,7 @@ Object.assign(World.prototype, {
   },
   buyHull(hullId) {
     const p = this.player, H = HULLS[hullId];
-    const cost = this.shopPrice(H) - this.hullTradeIn();
+    const cost = this.buyPrice(H) - this.hullTradeIn();
     if (p.credits < cost) return 'Не хватает кредитов';
     const pl = this.planets[p.docked];
     if (pl && this.yard && !this.stockOf(pl, hullId)) return 'Этого корпуса уже нет на складе';
@@ -518,6 +524,7 @@ Object.assign(World.prototype, {
   missionDone(o, pl) {
     const p = this.player;
     p.credits += o.reward;
+    if (this.careerMission) this.careerMission(p, o);
     this.addRepRaw(p, o.faction, o.type === 'war' ? 10 : o.type === 'bounty' ? 6 : 5);
     this.factions[o.faction].st.missionsOk++;
     this.missionsP = this.missionsP.filter(x => x !== o);

@@ -47,6 +47,9 @@ Object.assign(World.prototype, {
     if (!this.quests) this.quests = [];
     // просроченные
     for (const q of this.openQuests()) if (this.day > q.deadline) this.questFail(q, 'срок истёк');
+    // архив закрытых поручений не растёт бесконечно (он идёт в сохранение)
+    const closed = this.quests.filter(q => q.status !== 'open');
+    if (closed.length > 80) { const drop = new Set(closed.slice(0, closed.length - 60)); this.quests = this.quests.filter(q => !drop.has(q)); }
     // общий лимит — без учёта спасения и охоты за головой (они возникают по событиям)
     const board = () => this.openQuests().filter(q => q.type !== 'rescue' && q.type !== 'bounty').length;
     if (board() >= 12) return;
@@ -241,6 +244,7 @@ Object.assign(World.prototype, {
     q.winner = winner ? winner.id : null;
     const F = this.factions[q.giver];
     if (winner && winner.kind === 'pilot') {
+      if (this.careerQuest) this.careerQuest(winner, q);
       winner.credits += q.reward;
       this.addRepRaw(winner, q.giver, q.rep);
       if (winner.ctrl !== 'human') this.addRep(winner, q.giver, 0);

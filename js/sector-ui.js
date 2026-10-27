@@ -20,9 +20,10 @@ const SectorUI = {
   heads: new Map(),
 
   // ---------- запуск ----------
-  newGame(name, seed) {
+  newGame(name, seed, face) {
     const w = new World({ seed: seed != null ? seed : Math.floor(Math.random() * 1e9) });
     w.createPlayer(name || 'Рейнджер');
+    if (face) w.player.face = face;
     this.world = w;
     GalaxyUI.world = w;
     this.open();
@@ -39,6 +40,16 @@ const SectorUI = {
     this.viewSector = w.player.loc != null ? w.player.loc : (w.player.travel ? w.player.travel.to : 0);
     requestAnimationFrame(() => { this.resize(); this.centerOnPlayer(true); this.refresh(); });
     Sound.startDrone();
+  },
+  // загруженная кампания
+  loadWorld(w) {
+    this.world = w;
+    GalaxyUI.world = w;
+    this.dockPl = null;
+    this.sel = null;
+    this.open();
+    if (w.player && w.player.docked != null) setTimeout(() => this.openDock(w.planets[w.player.docked]), 300);
+    this.toast(`Загружено: день ${w.day}`, 'me');
   },
   close() {
     this.active = false;
@@ -60,6 +71,8 @@ const SectorUI = {
       E.title, E.day,
       h('div', { class: 'grow' }),
       h('button', { class: 'btn', title: 'Карта галактики', onclick: () => this.openGalaxy() }, '🗺', h('span', { class: 'lbl' }, ' Карта галактики')),
+      h('button', { class: 'btn', title: 'Список наёмников', onclick: () => MercUI.open() }, '★', h('span', { class: 'lbl' }, ' Наёмники')),
+      h('button', { class: 'ibtn', title: 'Сохранить / загрузить', onclick: () => SaveUI.open('game') }, '💾'),
       h('button', { class: 'ibtn', title: 'Центрировать на корабле', onclick: () => { this.follow = true; this.centerOnPlayer(true); } }, '⌖'),
       E.snd = h('button', { class: 'ibtn' + (Sound.on ? ' on' : ''), title: 'Звук', onclick: () => { E.snd.classList.toggle('on', Sound.toggle()); } }, '🔊'),
       E.turn));
@@ -248,7 +261,7 @@ const SectorUI = {
     } else if (o.type === 'ship') {
       const a = w.agents.get(o.id);
       if (!a) return;
-      html = `<b>${w.who(a)}</b><br>${HULLS[a.def.hull].name}<br>${GalaxyUI.taskText.call({ world: w }, a)}${w.hostile(w.player, a) ? '<br><b style="color:#ff6b6b">враждебен</b>' : ''}`;
+      html = `${a.kind === 'pilot' && a.face ? `<img class="tip-face" src="${FACE.url(a.face, 64)}">` : ''}<b>${w.who(a)}</b><br>${HULLS[a.def.hull].name}<br>${GalaxyUI.taskText.call({ world: w }, a)}${w.hostile(w.player, a) ? '<br><b style="color:#ff6b6b">враждебен</b>' : ''}`;
     } else if (o.type === 'battle') {
       const wb = w.battles.find(x => x.id === o.id);
       if (wb) html = `<b>⚔ Идёт бой</b><br>${GalaxyUI.battleText.call({ world: w }, wb)}`;
@@ -309,6 +322,8 @@ const SectorUI = {
     this.busy = false;
     this.els.turn.disabled = false;
     this.refresh();
+    // автосохранение раз в 5 дней (не посреди боя)
+    if (w.day % 5 === 0 && !w.player.battle) { const err = SaveGame.save(w, 'auto'); if (err) this.toast(err, 'bad'); }
     if (this.contBattle) { this.contBattle = false; if (w.playerBattle()) setTimeout(() => this.nextDay(), 0); }
   },
 
@@ -372,7 +387,7 @@ const SectorUI = {
     E.hud.innerHTML = '';
     const pct = (a, b) => (b > 0 ? U.clamp(a / b * 100, 0, 100) : 0) + '%';
     E.hud.append(
-      h('div', { class: 'hd-top' }, h('img', { src: GFX.shipImage(p.def.hull, 0, 100) }),
+      h('div', { class: 'hd-top' }, h('img', { class: 'hd-face', src: FACE.url(p.face, 96), title: 'Досье', onclick: () => MercUI.dossier(p) }), h('img', { src: GFX.shipImage(p.def.hull, 0, 100) }),
         h('div', null, h('div', { class: 'hd-name' }, p.name), h('div', { class: 'hd-sub' }, HULLS[p.def.hull].name),
           h('div', { class: 'hd-cr' }, `💰 ${Math.round(p.credits).toLocaleString('ru')} кр.`))),
       Info.helpBind(h('div', { class: 'gauge hp' }, h('i', { style: { width: pct(p.hp, p.maxHp) } }), h('span', null, `Корпус ${Math.round(p.hp)} / ${p.maxHp}`)), 'Корпус'),
@@ -433,6 +448,13 @@ const SectorUI = {
       const a = w.agents.get(o.id);
       if (!a) { B.appendChild(h('div', { class: 'empty-note' }, 'Корабль покинул сектор')); return; }
       const hostile = w.hostile(p, a);
+      // наёмник — с портретом и досье
+      if (a.kind === 'pilot') U.add(B, h('div', { class: 'tg-pilot', onclick: () => MercUI.dossier(a) },
+        h('img', { class: 'tg-face', src: FACE.url(a.face, 96) }),
+        h('div', null, h('div', { class: 'mc-name' }, a.name), h('div', { class: 'fs' }, `${MercUI.raceName(a)} · ${w.pilotTitle(a)}`),
+          h('div', { class: 'fs', style: { color: a.member >= 0 ? w.factions[a.member].color : '#9aa6bf' } }, a.member >= 0 ? `${w.rankName(a)} · ${w.factions[a.member].short}` : 'свободный наёмник'),
+          (a.honors || []).length ? h('div', { class: 'fs' }, (a.honors || []).slice(-8).map(m => h('span', { style: { color: MEDALS[m.id].color }, title: MEDALS[m.id].name }, MEDALS[m.id].icon + ' '))) : null)),
+        h('button', { class: 'btn ghost', onclick: () => MercUI.dossier(a) }, '📋 Досье'));
       U.add(B, h('div', { class: 'ph' }, AGENT_KINDS[a.kind].icon + ' ' + w.who(a)), h('img', { class: 'gx-shipimg', src: GFX.shipImage(a.def.hull, a.faction === PIRATE ? 1 : 0, 160) }),
         h('div', { class: 'fs' }, `${HULLS[a.def.hull].name} · корпус ${Math.round(a.hp)}/${a.maxHp}`),
         h('div', { class: 'fs' }, GalaxyUI.taskText.call({ world: w }, a)),
@@ -506,8 +528,12 @@ const SectorUI = {
   },
   renderPilot() {
     const w = this.world, B = this.els.body, p = w.player;
-    U.add(B, h('div', { class: 'ph' }, p.name), h('div', { class: 'fs' }, `Кредиты: ${Math.round(p.credits).toLocaleString('ru')} · уничтожено кораблей: ${p.kills}`),
-      h('div', { class: 'fs' }, p.member >= 0 ? `На службе: ${w.factions[p.member].name}` : 'Свободный наёмник'),
+    U.add(B, h('div', { class: 'tg-pilot', onclick: () => MercUI.dossier(p) }, h('img', { class: 'tg-face', src: FACE.url(p.face, 96) }),
+        h('div', null, h('div', { class: 'mc-name' }, p.name), h('div', { class: 'fs' }, `${MercUI.raceName(p)} · ${w.pilotTitle(p)} · рейтинг ${w.pilotRating(p)} (место ${w.pilotPlace(p)})`),
+          h('div', { class: 'fs' }, p.member >= 0 ? `${w.rankName(p)} · ${w.factions[p.member].name} · жалованье ${w.salary(p)} кр./день` : 'Свободный наёмник'))),
+      h('div', { class: 'fs' }, `Кредиты: ${Math.round(p.credits).toLocaleString('ru')} · уничтожено кораблей: ${p.kills}`),
+      (p.honors || []).length ? h('div', { class: 'fs' }, 'Награды: ', (p.honors || []).map(m => h('span', { style: { color: MEDALS[m.id].color }, title: `${MEDALS[m.id].name} — ${w.factions[m.f].short}` }, MEDALS[m.id].icon + ' '))) : null,
+      h('div', { class: 'row' }, h('button', { class: 'btn ghost', onclick: () => MercUI.dossier(p) }, '📋 Ваше досье'), h('button', { class: 'btn ghost', onclick: () => MercUI.open() }, '★ Наёмники')),
       h('div', { class: 'ph sm' }, 'Репутация'));
     const list = h('div', { class: 'gx-rel' });
     for (const f of w.factions) {
@@ -633,7 +659,7 @@ const SectorUI = {
       const items = w.shopItems(pl, S.cat).sort((a, b) => a.tier - b.tier || a.price - b.price);
       if (!items.length) right.appendChild(h('div', { class: 'empty-note' }, 'Сейчас на складе нет — раскупили. Новую партию привезёт снабженец фракции (если его не перехватят), или загляните на другую верфь.'));
       for (const it of items) {
-        const cost = w.shopPrice(it) - (cur ? w.sellValue(cur.id, slotWear(p.def, S.cat, S.i)) : 0);
+        const cost = w.buyPrice(it) - (cur ? w.sellValue(cur.id, slotWear(p.def, S.cat, S.i)) : 0);
         const heavy = mass - (cur ? cur.mass : 0) + it.mass > cap, poor = cost > p.credits;
         const row = h('div', { class: 'pick-row' + (heavy || poor ? ' dis' : '') },
           h('img', { class: 'iimg', src: GFX.itemIcon(it, 64) }),
@@ -647,7 +673,7 @@ const SectorUI = {
     } else {
       right.appendChild(h('div', { class: 'ph sm' }, 'Корпуса на продажу'));
       for (const H of w.shopHulls(pl)) {
-        const cost = w.shopPrice(H) - w.hullTradeIn();
+        const cost = w.buyPrice(H) - w.hullTradeIn();
         const row = h('div', { class: 'pick-row hullrow' + (cost > p.credits ? ' dis' : '') + (H.id === p.def.hull ? ' cur' : '') },
           h('img', { src: GFX.shipImage(H.id, 0, 80), style: { width: '48px', flex: 'none', objectFit: 'contain' } }),
           h('div', { class: 'pb' }, h('div', { class: 'nm' }, H.name), h('div', { class: 'sh' }, `♥${H.hp} ⚖${H.cap} укл.${H.ev}% · ${Info.slotsText(H)}`)),

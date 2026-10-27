@@ -120,8 +120,10 @@ const Menu = {
         h('h3', null, 'Кампания: рейнджер ', h('span', { class: 'beta' }, 'бета')),
         h('p', null, 'Вы — свободный пилот-наёмник в живой галактике: 30 секторов, 12 фракций, пиратские базы. Торгуйте, выполняйте задания, охотьтесь на пиратов, улучшайте корабль, поступайте на службу фракциям. Мир живёт пошагово по дням; бои длятся несколько дней, и к ним присоединяются другие корабли.')),
       h('div', { class: 'col' },
-        SectorUI.world ? h('button', { class: 'btn primary big', onclick: () => SectorUI.open() }, '▶ Продолжить') : null,
+        SectorUI.world ? h('button', { class: 'btn primary big', onclick: () => SectorUI.open() }, '▶ Продолжить')
+          : SaveGame.latest() ? h('button', { class: 'btn primary big', onclick: () => SaveUI.loadSlot(SaveGame.latest().slot) }, '▶ Продолжить') : null,
         h('button', { class: 'btn primary big', onclick: () => Menu.newGame() }, '★ Новая игра'),
+        SaveGame.latest() ? h('button', { class: 'btn', onclick: () => SaveUI.open('menu') }, '📂 Загрузить') : null,
         h('button', { class: 'btn', onclick: () => GalaxyUI.open(false) }, '👁 Наблюдать за галактикой')));
     el.append(parade, h('div', { class: 'menu-inner' }, logo, h('div', { class: 'mcards' }, custom, rnd, camp), foot));
   },
@@ -129,13 +131,24 @@ const Menu = {
 
 Menu.newGame = function () {
   const inp = h('input', { class: 'name-in', value: U.pick(PILOT_FIRST) + ' ' + U.pick(PILOT_LAST), maxlength: 24 });
-  const box = Modal.open(h('div', { class: 'confirm' },
+  // внешность рейнджера: случайная, можно перебрать и выбрать расу
+  let face = FACE.random();
+  const img = h('img', { class: 'ng-face' });
+  const raceSel = h('div', { class: 'seg small' });
+  const show = () => { img.src = FACE.url(face, 160); raceSel.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.r === face.race)); };
+  for (const r of RACE_LIST) raceSel.appendChild(h('button', { 'data-r': r, onclick: () => { face = FACE.random(Math.random, r); show(); } }, RACES[r].name));
+  const box = Modal.open(h('div', { class: 'confirm ng' },
     h('h2', null, 'Новый рейнджер'),
-    h('p', null, 'Вы начинаете свободным наёмником на скромном корабле с 4000 кредитов. Галактика создаётся заново.'),
-    h('div', null, inp),
+    h('div', { class: 'ng-row' },
+      h('div', { class: 'ng-pic' }, img, h('button', { class: 'btn ghost', onclick: () => { face = FACE.random(Math.random, face.race); show(); } }, '🎲 Другое лицо')),
+      h('div', { class: 'ng-col' },
+        h('p', null, 'Вы начинаете свободным наёмником на скромном корабле с 4000 кредитов. Галактика создаётся заново.'),
+        h('div', { class: 'fs dim' }, 'Имя'), inp,
+        h('div', { class: 'fs dim' }, 'Раса'), raceSel)),
     h('div', { class: 'row' },
       h('button', { class: 'btn', onclick: () => Modal.close() }, 'Отмена'),
-      h('button', { class: 'btn primary big', onclick: () => { Modal.close(); SectorUI.newGame(inp.value.trim() || 'Рейнджер'); } }, 'В путь!'))));
+      h('button', { class: 'btn primary big', onclick: () => { Modal.close(); SectorUI.newGame(inp.value.trim() || 'Рейнджер', undefined, face); } }, 'В путь!'))));
+  show();
   setTimeout(() => inp.focus(), 50);
   return box;
 };

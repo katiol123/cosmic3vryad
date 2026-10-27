@@ -307,11 +307,12 @@ const GalaxyUI = {
   },
   renderPilots() {
     const w = this.world, B = this.els.body;
-    const pilots = [...w.agents.values()].filter(a => a.kind === 'pilot').sort((a, b) => b.credits - a.credits);
+    const pilots = [...w.agents.values()].filter(a => a.kind === 'pilot').sort((a, b) => w.pilotRating(b) - w.pilotRating(a));
+    B.appendChild(h('button', { class: 'btn', style: { width: '100%', marginBottom: '8px' }, onclick: () => MercUI.open() }, '★ Полный список наёмников'));
     for (const p of pilots) {
       const tt = this.taskText(p), showIntent = p.intent && p.ctrl !== 'human' && !tt.startsWith(p.intent);
       const row = h('div', { class: 'gx-f' + (p.ctrl === 'human' ? ' me' : ''), onclick: () => { this.sel = { type: 'agent', id: p.id }; this.tab = 'sel'; this.refresh(); } },
-        h('img', { class: 'pimg2', src: GFX.shipImage(p.def.hull, 0, 80) }),
+        h('img', { class: 'gx-face', src: FACE.url(p.face, 64) }),
         h('div', { class: 'fb' },
           h('div', { class: 'fn' }, p.name, p.member >= 0 ? h('span', { style: { color: w.factions[p.member].color } }, ` [${w.factions[p.member].short}]`) : h('span', { class: 'dim' }, ' [наёмник]')),
           h('div', { class: 'fs' }, `${HULLS[p.def.hull].name} · ТУ ${w.shipTier(p).toFixed(1)} · 💰 ${Math.round(p.credits).toLocaleString('ru')} · ☠ ${p.kills}`),
@@ -365,6 +366,9 @@ const GalaxyUI = {
       const st = a.s;
       B.appendChild(h('div', null,
         h('div', { class: 'ph' }, AGENT_KINDS[a.kind].icon + ' ' + w.who(a)),
+        a.kind === 'pilot' ? h('div', { class: 'tg-pilot', onclick: () => MercUI.dossier(a) }, h('img', { class: 'tg-face', src: FACE.url(a.face, 96) }),
+          h('div', null, h('div', { class: 'fs' }, `${MercUI.raceName(a)} · ${w.pilotTitle(a)} · рейтинг ${w.pilotRating(a)}`), a.member >= 0 ? h('div', { class: 'fs' }, `${w.rankName(a)} · ${w.factions[a.member].short}`) : null,
+            h('button', { class: 'btn ghost', onclick: () => MercUI.dossier(a) }, '📋 Досье'))) : null,
         h('img', { class: 'gx-shipimg', src: GFX.shipImage(a.def.hull, a.faction === PIRATE ? 1 : 0, 160) }),
         h('div', { class: 'fs' }, `${HULLS[a.def.hull].name} · корпус ${Math.round(a.hp)}/${a.maxHp} · щит ${Math.round(st.maxShield)}${a.kind === 'pilot' ? ' · ТУ ' + w.shipTier(a).toFixed(1) : ''}${st.broken ? ' · сломано модулей: ' + st.broken : ''}`),
         h('div', { class: 'fs' }, `Задание: ${this.taskText(a)}`),
