@@ -59,7 +59,7 @@ const SectorUI = {
       h('button', { class: 'btn ghost', onclick: () => this.close() }, '← Меню'),
       E.title, E.day,
       h('div', { class: 'grow' }),
-      h('button', { class: 'btn', onclick: () => this.openGalaxy() }, '🗺 Карта галактики'),
+      h('button', { class: 'btn', title: 'Карта галактики', onclick: () => this.openGalaxy() }, '🗺', h('span', { class: 'lbl' }, ' Карта галактики')),
       h('button', { class: 'ibtn', title: 'Центрировать на корабле', onclick: () => { this.follow = true; this.centerOnPlayer(true); } }, '⌖'),
       E.snd = h('button', { class: 'ibtn' + (Sound.on ? ' on' : ''), title: 'Звук', onclick: () => { E.snd.classList.toggle('on', Sound.toggle()); } }, '🔊'),
       E.turn));

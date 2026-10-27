@@ -526,6 +526,7 @@ class Arena {
     ctx.restore();
 
     // интерфейс над кораблями
+    this._lab = [];
     for (const V of this.vis.values()) this.drawHud(ctx, V, V.ship === active);
 
     // тексты
@@ -684,10 +685,16 @@ class Arena {
     ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
     // на узкой карте имена слипаются — подписываем только того, кто сейчас ходит
     if (this.cv.width / d >= 500 || isActive) {
+      // подписи соседних кораблей не налезают друг на друга
+      const tw = ctx.measureText(s.name).width, th = 13 * d;
+      let ly = y - 6 * d;
+      const lab = this._lab || (this._lab = []);
+      for (let k = 0; k < 4 && lab.some(r => Math.abs(r.x - V.x) < (r.w + tw) / 2 + 4 * d && Math.abs(r.y - ly) < th); k++) ly -= th;
+      lab.push({ x: V.x, y: ly, w: tw });
       ctx.lineWidth = 3 * d; ctx.strokeStyle = 'rgba(2,4,12,0.8)'; ctx.lineJoin = 'round';
-      ctx.strokeText(s.name, V.x, y - 6 * d);
+      ctx.strokeText(s.name, V.x, ly);
       ctx.fillStyle = isActive ? '#ffffff' : 'rgba(210,225,255,0.85)';
-      ctx.fillText(s.name, V.x, y - 6 * d);
+      ctx.fillText(s.name, V.x, ly);
     }
     // щит
     ctx.fillStyle = 'rgba(0,0,0,0.6)';

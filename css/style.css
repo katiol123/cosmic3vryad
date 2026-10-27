@@ -696,3 +696,20 @@ select { background: rgba(10,16,36,.9); border: 1px solid var(--line); border-ra
 .pick-row img + .pb { margin-left: 4px; }
 .fc-stats > div { background: rgba(255,255,255,.05); border: 1px solid color-mix(in srgb, var(--fc) 35%, transparent); }
 .fc-emblem { font-family: sans-serif; }
+/* бой: статусы и оружие не сжимаются, панель прокручивается */
+.bt-left > * { flex: none; }
+.bt-left { overflow-y: auto; }
+.bt-queue { overflow: visible; }
+.bt-queue .q { animation-name: qIn; }
+@keyframes qIn { from { opacity: 0; transform: translateX(10px); } }
+/* мобильный бой: портреты обеих сторон в одну строку, скорости без переноса */
+@media (max-width: 560px) {
+  .bt-top { grid-template-columns: 1fr 1fr; }
+  .bt-center { grid-column: 1 / -1; }
+  .fleet-bar .portrait { width: 56px; }
+  .fleet-bar .pname { display: none; }
+  .bt-ctrl .seg { flex-wrap: nowrap; }
+  .bt-right { grid-template-rows: 22vh 70px; }
+}
+@media (max-width: 560px) { .topbar .lbl { display: none; } }
+@media (max-width: 560px) { .arena-hint { display: none; } .log-wrap .ph { display: none; } }
