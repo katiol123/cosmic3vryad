@@ -114,7 +114,13 @@ const Menu = {
       h('button', { class: 'btn ghost', onclick: e => { const on = Sound.toggle(); e.currentTarget.textContent = on ? '🔊 Звук: вкл' : '🔇 Звук: выкл'; } }, Sound.on ? '🔊 Звук: вкл' : '🔇 Звук: выкл'),
       h('span', { class: 'stat' }, `${HULL_LIST.length} корпусов · ${Object.keys(ITEMS).length} моделей оборудования`));
 
-    el.append(parade, h('div', { class: 'menu-inner' }, logo, h('div', { class: 'mcards' }, custom, rnd), foot));
+    const camp = h('div', { class: 'mcard wide camp' },
+      h('div', { class: 'mcard-ico' }, '🌌'),
+      h('div', null,
+        h('h3', null, 'Кампания: живая галактика ', h('span', { class: 'beta' }, 'наблюдение')),
+        h('p', null, '30 секторов, 12 фракций, пиратские базы. Торговцы, дипломаты, патрули, военные флоты и свободные пилоты-наёмники летают с миссиями; бои длятся несколько дней, к ним присоединяются подкрепления. Мир живёт пошагово по дням.')),
+      h('button', { class: 'btn primary big', onclick: () => GalaxyUI.open(false) }, 'Открыть галактику'));
+    el.append(parade, h('div', { class: 'menu-inner' }, logo, h('div', { class: 'mcards' }, custom, rnd, camp), foot));
   },
 };
 

@@ -26,7 +26,8 @@
     last = now;
     const g = Clock.tick(real) / 1000;
     const inBattle = BattleUI.active && Screens.cur && Screens.cur.id === 'scr-battle';
-    if (!inBattle) BG.render(real / 1000);
+    if (!inBattle && !GalaxyUI.active) BG.render(real / 1000);
+    if (GalaxyUI.active) GalaxyUI.frame(real / 1000);
     if (BattleUI.active && BattleUI.bv) {
       BattleUI.bv.update(g);
       BattleUI.bv.render();

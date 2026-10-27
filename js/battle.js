@@ -29,13 +29,9 @@ class Battle {
     this.cfg = cfg;
     this.ui = cfg.ui || {};
     this.ships = [];
+    this.maxRounds = cfg.maxRounds || MAX_ROUNDS;
     cfg.fleets.forEach((fleet, side) => {
-      fleet.ships.forEach((def, i) => {
-        const sh = new Ship(def, side, i, fleet.ctrl);
-        sh.diff = fleet.diff || 'normal';
-        sh.board.onEvent = ev => this.hook('boardEvent', sh, ev);
-        this.ships.push(sh);
-      });
+      fleet.ships.forEach((entry, i) => this.makeShip(entry, side, i, fleet));
     });
     this.round = 0;
     this.active = null;
@@ -56,6 +52,43 @@ class Battle {
     const avg = U.sum(this.ships, sh => sh.s.init) / this.ships.length;
     this.roundLen = ACT / (SPEED_BASE + avg);
     for (const sh of this.ships) sh.nextAt = ACT / this.speed(sh) * U.rf(0.15, 1);
+  }
+
+  // Элемент флота: либо описание сборки, либо { def, hp, shield, ref, ctrl, diff } — для кораблей из мира кампании
+  makeShip(entry, side, i, fleet = {}) {
+    const e = entry.hull ? { def: entry } : entry;
+    const sh = new Ship(e.def, side, i, e.ctrl || fleet.ctrl);
+    sh.diff = e.diff || fleet.diff || 'normal';
+    if (e.hp != null) sh.hp = Math.max(1, Math.min(sh.s.maxHp, e.hp));
+    if (e.shield != null) sh.shield = Math.min(sh.s.maxShield, e.shield);
+    sh.ref = e.ref || null;
+    sh.board.onEvent = ev => this.hook('boardEvent', sh, ev);
+    this.ships.push(sh);
+    return sh;
+  }
+
+  // Подкрепление посреди боя: корабль появляется у края поля своей стороны
+  addShip(entry, side) {
+    const sh = this.makeShip(entry, side, this.ships.filter(s => s.side === side).length);
+    sh.x = side === 0 ? U.rf(1.2, 2.5) : FIELD_W - U.rf(1.2, 2.5);
+    sh.y = U.rf(1.5, FIELD_H - 1.5);
+    sh.heading = side === 0 ? 0 : Math.PI;
+    sh.nextAt = this.time + ACT / this.speed(sh) * U.rf(0.3, 1);
+    this.msg(`⚑ ${sh.name} вступает в бой на стороне ${side === 0 ? 'синих' : 'красных'}!`, 'good', sh);
+    this.hook('onJoin', sh);
+    this.hook('update');
+    return sh;
+  }
+
+  // Выход из боя (бегство): корабль не уничтожен, но больше не участвует
+  retreat(ship) {
+    if (!ship.alive) return;
+    ship.alive = false;
+    ship.fled = true;
+    for (const s of this.ships) if (s.target === ship) s.target = null;
+    this.msg(`↩ ${ship.name} выходит из боя`, 'move', ship);
+    this.hook('onRetreat', ship);
+    this.checkEnd();
   }
 
   // Скорость хода: чем выше инициатива, тем чаще корабль ходит
@@ -218,29 +251,50 @@ class Battle {
     return best;
   }
 
-  async run() {
-    this.msg('Битва началась!', 'sys');
-    this.hook('update');
-    while (!this.over && !this.stopped) {
-      const alive = this.ships.filter(sh => sh.alive);
-      let ship = alive[0];
-      for (const sh of alive) if (sh.nextAt < ship.nextAt - 1e-9 || (Math.abs(sh.nextAt - ship.nextAt) < 1e-9 && this.speed(sh) > this.speed(ship))) ship = sh;
-      this.time = ship.nextAt;
-      const r = Math.floor(this.time / this.roundLen) + 1;
-      if (r > this.round) {
-        this.round = r;
-        if (this.round > MAX_ROUNDS) { this.endByScore(); break; }
-        this.hook('onRound', this.round);
-      }
-      ship.nextAt += ACT / this.speed(ship);
-      await this.takeTurn(ship);
-      this.checkEnd();
+  nextShip() {
+    const alive = this.ships.filter(sh => sh.alive);
+    let ship = alive[0];
+    for (const sh of alive) if (sh.nextAt < ship.nextAt - 1e-9 || (Math.abs(sh.nextAt - ship.nextAt) < 1e-9 && this.speed(sh) > this.speed(ship))) ship = sh;
+    return ship;
+  }
+
+  // Один ход одного корабля
+  async step() {
+    if (!this.started) { this.started = true; this.msg('Битва началась!', 'sys'); this.hook('update'); }
+    const ship = this.nextShip();
+    if (!ship) { this.checkEnd(); return; }
+    this.time = ship.nextAt;
+    const r = Math.floor(this.time / this.roundLen) + 1;
+    if (r > this.round) {
+      this.round = r;
+      if (this.round > this.maxRounds) { this.endByScore(); return; }
+      this.hook('onRound', this.round);
     }
+    ship.nextAt += ACT / this.speed(ship);
+    await this.takeTurn(ship);
+    this.checkEnd();
+  }
+
+  async run() {
+    while (!this.over && !this.stopped) await this.step();
     if (!this.stopped) this.hook('onEnd', this);
     return this.winner;
   }
 
+  // Продвинуть бой на dt единиц времени (кампания: за один день проходит только часть боя)
+  async advance(dt) {
+    const until = this.time + dt;
+    while (!this.over && !this.stopped) {
+      const n = this.nextShip();
+      if (!n || n.nextAt > until) break;
+      await this.step();
+    }
+    if (!this.over) this.time = Math.max(this.time, until);
+    return this.over;
+  }
+
   checkEnd() {
+    if (this.over) return;
     for (let side = 0; side < 2; side++) {
       if (!this.ships.some(s => s.side === side && s.alive)) {
         this.over = true;
@@ -639,6 +693,7 @@ class Battle {
     if (!ship.alive) return;
     ship.alive = false;
     ship.hp = 0;
+    ship.killer = by || null;
     if (by && by !== ship) by.st.kills++;
     this.msg(`💥 ${ship.name} уничтожен${by ? ` (${by.name})` : ''}!`, 'kill', ship);
     for (const s of this.ships) if (s.target === ship) s.target = null;
