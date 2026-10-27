@@ -91,7 +91,7 @@ class Arena {
   layout() {
     if (!this.b) return;
     const W = this.cv.width, H = this.cv.height, m = 26 * this.dpr;
-    this.sc = Math.min((W - m * 2) / FIELD_W, (H - m * 2) / FIELD_H);
+    this.sc = this.sc0 = Math.min((W - m * 2) / FIELD_W, (H - m * 2) / FIELD_H);
     this.ox = (W - FIELD_W * this.sc) / 2;
     this.oy = (H - FIELD_H * this.sc) / 2;
     for (const s of this.b.ships) {
@@ -284,14 +284,35 @@ class Arena {
   }
 
   text(x, y, s, col, life = 1, scale = 1) {
-    this.texts.push({ x, y, s, col, t: 0, d: life, scale });
+    // свежие числа рядом не налезают друг на друга — выстраиваются столбиком
+    const near = this.texts.filter(t => t.t < 0.45 && Math.abs(t.x - x) < 60 * this.dpr && Math.abs(t.y0 - y) < 30 * this.dpr).length;
+    this.texts.push({ x, y: y - near * 20 * this.dpr, y0: y, s, col, t: 0, d: life, scale });
     if (this.texts.length > 60) this.texts.shift();
   }
 
   // ---------- Обновление ----------
+  // камера: плавно кадрирует живые корабли, чтобы они не жались к краю и не обрезались
+  frameCamera(dt) {
+    const alive = this.b.ships.filter(s => s.alive);
+    if (!alive.length || !this.sc0) return;
+    const W = this.cv.width, H = this.cv.height, m = 70 * this.dpr;
+    let x0 = Math.min(...alive.map(s => s.x)), x1 = Math.max(...alive.map(s => s.x));
+    let y0 = Math.min(...alive.map(s => s.y)), y1 = Math.max(...alive.map(s => s.y));
+    const pad = 3.5;
+    x0 -= pad; x1 += pad; y0 -= pad; y1 += pad;
+    const minW = FIELD_W * 0.5, minH = FIELD_H * 0.5;
+    if (x1 - x0 < minW) { const c = (x0 + x1) / 2; x0 = c - minW / 2; x1 = c + minW / 2; }
+    if (y1 - y0 < minH) { const c = (y0 + y1) / 2; y0 = c - minH / 2; y1 = c + minH / 2; }
+    const sc = U.clamp(Math.min((W - m * 2) / (x1 - x0), (H - m * 2) / (y1 - y0)), this.sc0 * 0.85, this.sc0 * 1.8);
+    const ox = W / 2 - (x0 + x1) / 2 * sc, oy = H / 2 - (y0 + y1) / 2 * sc;
+    const k = Math.min(1, dt * 1.4);
+    this.sc += (sc - this.sc) * k; this.ox += (ox - this.ox) * k; this.oy += (oy - this.oy) * k;
+  }
+
   update(dt) {
     this.time += dt;
     if (!this.b) return;
+    this.frameCamera(dt);
     const d = this.dpr;
     for (const V of this.vis.values()) {
       const s = V.ship;

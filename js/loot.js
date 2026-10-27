@@ -47,6 +47,19 @@ Object.assign(World.prototype, {
     for (const it of d.items) parts.push(`${SLOT_TYPES[ITEMS[it.id].cat].icon}${ITEMS[it.id].name}`);
     return parts.join(', ') || 'пусто';
   },
+  // трюм модулей: id и износ каждого трофея
+  stashAdd(a, id, wear = 0) {
+    (a.stash = a.stash || []).push(id);
+    (a.stashW = a.stashW || []).length = a.stash.length - 1;
+    a.stashW.push(wear);
+  },
+  stashWear(a, i) { return (a.stashW && a.stashW[i]) || 0; },
+  stashTake(a, i) {
+    const id = a.stash[i], wear = this.stashWear(a, i);
+    a.stash.splice(i, 1);
+    if (a.stashW) a.stashW.splice(i, 1);
+    return { id, wear };
+  },
   dropsIn(sid) { return (this.drops || []).filter(d => d.sector === sid); },
   dropById(id) { return (this.drops || []).find(d => d.id === id); },
 
@@ -72,7 +85,7 @@ Object.assign(World.prototype, {
       }
       for (const it of d.items) {
         got.push(ITEMS[it.id].name);
-        if (a.ctrl === 'human') { (a.stash = a.stash || []).push(it.id); }
+        if (a.ctrl === 'human') this.stashAdd(a, it.id, it.wear);
         else this.pilotTakeItem(a, it.id, it.wear);
       }
       d.items = [];
@@ -97,10 +110,9 @@ Object.assign(World.prototype, {
       const g = this.pilotScore(a, computeStats(d)) / base - 1;
       if (g > bg) { bg = g; best = i; }
     });
-    a.stash = a.stash || [];
-    if (best == null) { a.stash.push(id); return false; }
+    if (best == null) { this.stashAdd(a, id, wear); return false; }
     const old = slots[best];
-    if (old) a.stash.push(old);
+    if (old) this.stashAdd(a, old, slotWear(a.def, cat, best));
     a.def.slots[cat][best] = id;
     setWear(a.def, cat, best, wear);
     this.refreshKeep(a);

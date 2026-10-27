@@ -103,7 +103,7 @@ const SectorUI = {
   centerOnPlayer(snap) {
     const p = this.world.player;
     if (!this.els) return;
-    if (snap) this.cam.z = this.baseZoom() * 1.5;
+    if (snap) this.cam.z = this.baseZoom() * 1.15; // видна почти вся система
     const pos = this.playerPos();
     if (pos) { this.cam.x = pos[0]; this.cam.y = pos[1]; }
   },
@@ -165,6 +165,19 @@ const SectorUI = {
     }
     return out;
   },
+  // подпись на холсте: читаемый размер, тёмная тень-подложка, не вылезает за край
+  label(ctx, text, x, y, col, base = 'top', size = 12) {
+    const d = this.dpr, cv = this.els.cv;
+    ctx.save();
+    ctx.font = `600 ${size * d}px "Exo 2", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = base;
+    const wdt = ctx.measureText(text).width, m = 8 * d;
+    x = U.clamp(x, m + wdt / 2, cv.width - m - wdt / 2);
+    y = U.clamp(y, m + (base === 'bottom' ? size * d : 0), cv.height - m - (base === 'top' ? size * d : 0));
+    ctx.lineWidth = 3.5 * d; ctx.strokeStyle = 'rgba(2,4,12,0.85)'; ctx.lineJoin = 'round';
+    ctx.strokeText(text, x, y);
+    ctx.fillStyle = col; ctx.fillText(text, x, y);
+    ctx.restore();
+  },
   animK() { return U.ease.inOutCubic(this.anim); },
   agentPos(a) {
     if (a.loc !== this.viewSector || a.travel || a.sx == null) return null;
@@ -201,7 +214,7 @@ const SectorUI = {
     if (o.type === 'planet') this.setCourse({ type: 'planet', id: o.id });
     else if (o.type === 'gate') this.setCourse({ type: 'gate', to: o.to });
     else if (o.type === 'point') this.setCourse({ type: 'point', x: o.x, y: o.y });
-    else if (o.type === 'base') this.setCourse({ type: 'point', x: o.x * 0.9, y: o.y * 0.9 });
+    else if (o.type === 'base') { this.tab = 'target'; this.refresh(); return; }
     else if (o.type === 'quest') this.setCourse({ type: 'quest', id: o.id });
     else if (o.type === 'drop') this.setCourse({ type: 'drop', id: o.id });
     this.tab = 'target';
@@ -383,6 +396,13 @@ const SectorUI = {
 
   renderTarget() {
     const w = this.world, B = this.els.body, o = this.sel, p = w.player;
+    if (!o && this.dockPl) {
+      // на станции полезнее сводка: что в трюме и какие поручения в работе
+      this.renderCargo();
+      const mine = w.pilotQuests(p);
+      if (mine.length) { B.appendChild(h('div', { class: 'ph sm' }, 'Ваши поручения')); for (const q of mine) B.appendChild(this.questCard(q, true)); }
+      return;
+    }
     if (!o) { B.appendChild(h('div', { class: 'empty-note' }, 'Выберите объект в секторе: планету, ворота, корабль или бой.')); this.renderSectorList(); return; }
     if (o.type === 'planet') {
       const pl = w.planets[o.id], f = pl.owner >= 0 ? w.factions[pl.owner] : null;
@@ -428,7 +448,8 @@ const SectorUI = {
     } else if (o.type === 'base') {
       const bs = w.bases.find(x => x.id === o.id);
       U.add(B, h('div', { class: 'ph' }, '☠ ' + (bs ? bs.name : 'База')), h('div', { class: 'fs' }, bs ? `Богатство ${Math.round(bs.wealth)} · оборона ${Math.round(bs.defense)}` : ''),
-        h('div', { class: 'fs dim' }, 'Пиратская база. Её охраняют пираты, а штурмуют её карательные экспедиции фракций.'));
+        h('div', { class: 'fs dim' }, 'Пиратская база. Сначала придётся разбить охрану, затем — обстреливать станцию, пока её оборона не обнулится (станция отстреливается). Штурмуют базы и карательные экспедиции фракций.'),
+        bs ? h('button', { class: 'btn danger', onclick: () => { this.setCourse({ type: 'base' }); this.refresh(); } }, '💥 Штурмовать станцию') : null);
     }
   },
   renderSectorList() {
@@ -545,7 +566,7 @@ const SectorUI = {
       tbl.appendChild(h('div', { class: 'mk-row' },
         h('span', null, `${g.icon} ${g.name}`),
         h('span', { class: r < 0.85 ? 'cheap' : r > 1.25 ? 'dear' : '' }, buy),
-        h('span', null, sell), h('span', null, Math.round(pl.stock[g.id])), h('span', null, have || ''),
+        h('span', null, sell), h('span', null, Math.round(pl.stock[g.id])), h('span', { class: have ? 'gold' : 'dim' }, have || '—'),
         h('span', { class: 'mk-btns' },
           h('button', { class: 'ibtn', title: 'Купить 1', onclick: act(w.playerBuy, 1) }, '+1'),
           h('button', { class: 'ibtn', title: 'Купить 10', onclick: act(w.playerBuy, 10) }, '+10'),
@@ -578,17 +599,18 @@ const SectorUI = {
     if (S && p.def.slots[S.cat] && S.i < p.def.slots[S.cat].length) {
       const cur = p.def.slots[S.cat][S.i] ? ITEMS[p.def.slots[S.cat][S.i]] : null;
       // трофеи и реликвии из трюма — установка бесплатно
-      const stash = (p.stash || []).filter(id => ITEMS[id] && ITEMS[id].cat === S.cat);
+      const stash = (p.stash || []).map((id, i) => [id, i]).filter(([id]) => ITEMS[id] && ITEMS[id].cat === S.cat);
       if (stash.length) {
         right.appendChild(h('div', { class: 'ph sm' }, 'Из трюма (трофеи)'));
-        for (const id of stash) {
-          const it = ITEMS[id];
-          const row = h('div', { class: 'pick-row cur' }, h('span', { class: 'tier' }, '✧'), h('div', { class: 'pb' }, h('div', { class: 'nm' }, it.name), h('div', { class: 'sh' }, Info.short(it))),
-            h('div', { class: 'pr' }, h('span', null, 'установить'), h('button', { class: 'ibtn danger', title: `Продать за ${w.sellValue(id, 0.3)} кр.`, onclick: e => { e.stopPropagation(); w.sellStash(id); Sound.click(); this.renderDock(); } }, '₵')));
+        for (const [id, si] of stash) {
+          const it = ITEMS[id], wr = w.stashWear(p, si);
+          const row = h('div', { class: 'pick-row cur' }, h('span', { class: 'tier' }, '✧'), h('div', { class: 'pb' }, h('div', { class: 'nm' }, it.name, wr >= 0.05 ? h('span', { class: 'wear' + (wr >= 0.6 ? ' bad' : '') }, ` износ ${Math.round(wr * 100)}%`) : null), h('div', { class: 'sh' }, Info.short(it))),
+            h('div', { class: 'pr' }, h('span', null, 'установить'), h('button', { class: 'ibtn danger', title: `Продать за ${w.sellValue(id, wr)} кр.`, onclick: e => { e.stopPropagation(); w.sellStash(si); Sound.click(); this.renderDock(); } }, '₵')));
           row.addEventListener('click', () => {
             if (defMass(p.def) - (cur ? cur.mass : 0) + it.mass > cap) { this.toast('Не хватает вместимости', 'bad'); return; }
-            p.stash.splice(p.stash.indexOf(id), 1);
-            if (cur) p.stash.push(cur.id);
+            w.stashTake(p, si);
+            if (cur) w.stashAdd(p, cur.id, slotWear(p.def, S.cat, S.i));
+            setWear(p.def, S.cat, S.i, wr);
             p.def.slots[S.cat][S.i] = id;
             w.refreshKeep(p);
             Sound.special('make');
@@ -643,9 +665,10 @@ const SectorUI = {
       c > 0 ? h('button', { class: 'btn primary big', onclick: () => { w.repair(); Sound.special('cleanse'); this.renderDock(); } }, `✚ Залатать корпус: ${c} кр.`) : h('div', { class: 'fs dim' }, 'Корпус цел.'));
     // оборудование
     const rows = [];
-    for (const k of SLOT_ORDER) p.def.slots[k].forEach((id, i) => { if (id && k !== 'artifact') rows.push([k, i, id]); });
+    for (const k of SLOT_ORDER) p.def.slots[k].forEach((id, i) => { if (id && k !== 'artifact' && slotWear(p.def, k, i) >= 0.02) rows.push([k, i, id]); });
     const total = w.gearRepairTotal(p);
     B.appendChild(h('div', { class: 'ph sm' }, 'Оборудование'));
+    if (!rows.length) B.appendChild(h('div', { class: 'ok-note' }, '✔ Всё оборудование в исправном состоянии'));
     if (total > 0) B.appendChild(h('button', { class: 'btn primary', onclick: () => { const sp = w.repairGear(p, p.credits); if (!sp) this.toast('Не хватает кредитов', 'bad'); else Sound.special('cleanse'); this.renderDock(); } }, `🔧 Починить всё: ${total} кр.`));
     for (const [k, i, id] of rows) {
       const it = ITEMS[id], wr = slotWear(p.def, k, i), cost = w.gearRepairCost(p, k, i);
@@ -710,17 +733,40 @@ const SectorUI = {
       for (const o of w.missionsP) B.appendChild(h('div', { class: 'gx-ag' }, `📜 ${o.title} — ${o.deadline - w.day} дн.${o.count ? ` (${o.killed}/${o.count})` : ''}`));
     }
   },
+  // характер фракции словами
+  factionTraits(F) {
+    const t = [];
+    if (F.trade >= 0.7) t.push('торговцы'); if (F.war >= 0.7) t.push('воинственны'); if (F.diplo >= 0.7) t.push('искусные дипломаты');
+    if (F.expand >= 0.7) t.push('стремятся к экспансии'); if (F.war <= 0.3) t.push('миролюбивы'); if (F.diplo <= 0.3) t.push('несговорчивы');
+    return t.length ? t.join(' · ') : 'умеренная политика';
+  },
   dkFaction(B) {
     const w = this.world, pl = this.dockPl, p = w.player;
     if (pl.owner < 0) { B.appendChild(h('div', { class: 'empty-note' }, 'Независимая планета — здесь нет фракции.')); return; }
     const f = w.factions[pl.owner], rep = Math.round(p.rep[f.idx] || 0);
-    U.add(B, h('div', { class: 'ph', style: { color: f.color } }, f.name),
-      h('div', { class: 'fs' }, `Планет: ${w.factionPlanets(f.idx).length} · казна ${Math.round(f.treasury).toLocaleString('ru')} · ТУ ${U.roman(f.tech)}`),
-      h('div', { class: 'fs' }, f.wars.size ? '⚔ Война с: ' + [...f.wars].map(x => w.factions[x].short).join(', ') : 'Ни с кем не воюет'),
-      h('div', { class: 'fs' }, `Ваша репутация: ${rep}`));
-    if (p.member === f.idx) U.add(B, h('div', { class: 'fs' }, 'Вы на службе этой фракции: жалованье 30 кр. в день, враги фракции — ваши враги.'), h('button', { class: 'btn danger', onclick: () => { w.leaveFaction(); this.renderDock(); } }, 'Уйти со службы'));
-    else if (p.member >= 0) U.add(B, h('div', { class: 'fs dim' }, `Вы служите фракции ${w.factions[p.member].short}.`));
-    else U.add(B, h('button', { class: 'btn primary', disabled: rep < 30 ? true : null, onclick: () => { if (w.joinFaction(f.idx)) { Sound.victory(true); this.renderDock(); } } }, rep < 30 ? `Поступить на службу (нужна репутация 30)` : 'Поступить на службу'));
+    const relTo = x => Math.round(f.rel[x.idx] || 0);
+    const others = w.factions.filter(x => x.alive && x !== f);
+    const allies = others.filter(x => relTo(x) >= 40).map(x => x.short), foes = [...f.wars].map(x => w.factions[x].short);
+    const card = h('div', { class: 'fc-card', style: { '--fc': f.color } },
+      h('div', { class: 'fc-head' }, h('div', { class: 'fc-emblem' }, f.name[0]),
+        h('div', null, h('div', { class: 'fc-name' }, f.name), h('div', { class: 'fs' }, this.factionTraits(FACTIONS[f.idx])))),
+      h('div', { class: 'fc-stats' },
+        h('div', null, h('b', null, w.factionPlanets(f.idx).length), h('span', null, 'планет')),
+        h('div', null, h('b', null, Math.round(f.treasury).toLocaleString('ru')), h('span', null, 'казна')),
+        h('div', null, h('b', null, U.roman(f.tech)), h('span', null, 'тех. уровень')),
+        h('div', null, h('b', null, [...w.agents.values()].filter(a => a.faction === f.idx && (a.kind === 'warship' || a.kind === 'patrol')).length), h('span', null, 'боевых кораблей'))),
+      h('div', { class: 'fs' }, foes.length ? '⚔ Воюет с: ' + foes.join(', ') : '☮ Ни с кем не воюет'),
+      allies.length ? h('div', { class: 'fs' }, '🤝 Дружит с: ' + allies.join(', ')) : null,
+      h('div', { class: 'fc-rep' }, h('span', null, 'Ваша репутация'),
+        h('div', { class: 'relbar' }, h('b', { style: { left: rep >= 0 ? '50%' : (50 + rep / 2) + '%', width: Math.abs(rep) / 2 + '%', background: rep >= 0 ? '#2ee66b' : '#ff4d6d' } })),
+        h('b', { style: { color: rep >= 0 ? '#a6ffc4' : '#ff8fa3' } }, (rep > 0 ? '+' : '') + rep)));
+    B.appendChild(card);
+    const act = h('div', { class: 'fc-act' });
+    if (p.member === f.idx) U.add(act, h('div', { class: 'fs' }, 'Вы на службе этой фракции: жалованье 30 кр. в день, враги фракции — ваши враги.'), h('button', { class: 'btn danger', onclick: () => { w.leaveFaction(); this.renderDock(); } }, 'Уйти со службы'));
+    else if (p.member >= 0) U.add(act, h('div', { class: 'fs dim' }, `Вы служите фракции ${w.factions[p.member].short}.`));
+    else U.add(act, h('div', { class: 'fs dim' }, 'Служба даёт жалованье и доступ к военным контрактам, но враги фракции станут вашими врагами.'),
+      h('button', { class: 'btn primary', disabled: rep < 30 ? true : null, onclick: () => { if (w.joinFaction(f.idx)) { Sound.victory(true); this.renderDock(); } } }, rep < 30 ? `Поступить на службу (нужна репутация 30)` : 'Поступить на службу'));
+    B.appendChild(act);
   },
   dkNews(B) {
     const w = this.world;
@@ -790,11 +836,17 @@ const SectorUI = {
     const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, sr);
     core.addColorStop(0, '#ffffff'); core.addColorStop(0.6, s.star); core.addColorStop(1, U.rgba(s.star, 0));
     ctx.fillStyle = core; ctx.beginPath(); ctx.arc(cx, cy, sr, 0, Math.PI * 2); ctx.fill();
-    // лучи
-    ctx.strokeStyle = U.rgba(s.star, 0.25); ctx.lineWidth = 2 * d;
-    for (let i = 0; i < 6; i++) {
-      const a = i * Math.PI / 3 + this.t * 0.05;
-      ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * sr * 0.8, cy + Math.sin(a) * sr * 0.8); ctx.lineTo(cx + Math.cos(a) * sr * 3.2, cy + Math.sin(a) * sr * 3.2); ctx.stroke();
+    // лучи: сужающиеся мерцающие клинья, гаснущие к концу
+    for (let i = 0; i < 8; i++) {
+      const a = i * Math.PI / 4 + this.t * 0.04 + (i % 2) * 0.2;
+      const len = sr * (i % 2 ? 1.6 : 2.4) * (0.85 + 0.15 * Math.sin(this.t * 1.7 + i * 1.3));
+      const wdt = sr * (i % 2 ? 0.07 : 0.11);
+      const ex = cx + Math.cos(a) * len, ey = cy + Math.sin(a) * len;
+      const g = ctx.createLinearGradient(cx, cy, ex, ey);
+      g.addColorStop(0, U.rgba(s.star, 0.45)); g.addColorStop(0.35, U.rgba(s.star, 0.18)); g.addColorStop(1, U.rgba(s.star, 0));
+      ctx.fillStyle = g;
+      const nx = -Math.sin(a) * wdt, ny = Math.cos(a) * wdt;
+      ctx.beginPath(); ctx.moveTo(cx + nx, cy + ny); ctx.lineTo(ex, ey); ctx.lineTo(cx - nx, cy - ny); ctx.closePath(); ctx.fill();
     }
     ctx.restore();
     // планеты
@@ -808,9 +860,7 @@ const SectorUI = {
       ctx.drawImage(spr.canvas, x - spr.canvas.width * sc / 2, y - spr.canvas.height * sc / 2, spr.canvas.width * sc, spr.canvas.height * sc);
       const sel = this.sel && this.sel.type === 'planet' && this.sel.id === pid, hov = this.hover && this.hover.type === 'planet' && this.hover.id === pid;
       if (sel || hov) { ctx.strokeStyle = sel ? '#fff' : 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1.5 * d; ctx.beginPath(); ctx.arc(x, y, R + 8 * d, 0, Math.PI * 2); ctx.stroke(); }
-      ctx.font = `600 ${11 * d}px "Exo 2", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillStyle = p.owner >= 0 ? w.factions[p.owner].color : 'rgba(200,210,230,0.7)';
-      ctx.fillText(p.name, x, y + R + 4 * d);
+      this.label(ctx, p.name, x, y + R + 4 * d, p.owner >= 0 ? w.factions[p.owner].color : 'rgba(210,220,240,0.85)', 'top');
       if (p.shipyard && p.pop > 0) { ctx.fillStyle = 'rgba(255,224,102,0.8)'; ctx.fillText('🔧', x + R + 6 * d, y - R); }
     }
     // гиперворота
@@ -829,8 +879,7 @@ const SectorUI = {
       g.addColorStop(0, U.rgba(col, 0.35)); g.addColorStop(1, U.rgba(col, 0));
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
-      ctx.font = `600 ${11 * d}px "Exo 2", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillStyle = U.rgba(col, 0.9); ctx.fillText('⟿ ' + o.name, x, y + r * 0.7);
+      this.label(ctx, '⟿ ' + o.name, x, y + r * 0.9 + 6 * d, U.rgba(col, 0.95), 'top');
       if (this.hover && this.hover.type === 'gate' && this.hover.to === n) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5 * d; ctx.beginPath(); ctx.arc(x, y, r * 1.4, 0, Math.PI * 2); ctx.stroke(); }
     }
     // пиратская база
@@ -952,8 +1001,7 @@ const SectorUI = {
       ctx.restore();
       const sel = this.sel && this.sel.type === 'ship' && this.sel.id === a.id;
       if (sel || (this.hover && this.hover.type === 'ship' && this.hover.id === a.id) || me) {
-        ctx.font = `600 ${10.5 * d}px "Exo 2", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-        ctx.fillStyle = col; ctx.fillText(me ? 'ВЫ' : w.who(a), x, y - len * 0.6);
+        this.label(ctx, me ? 'ВЫ' : w.who(a), x, y - len * 0.6, col, 'bottom');
       }
       if (sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5 * d; ctx.beginPath(); ctx.arc(x, y, len * 0.75, 0, Math.PI * 2); ctx.stroke(); }
       if (a.boss) { ctx.font = `${13 * d}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillStyle = '#ffe066'; ctx.fillText('👑', x, y - len * 0.6 - 12 * d); }

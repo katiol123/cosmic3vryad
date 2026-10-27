@@ -74,8 +74,7 @@ const BattleUI = {
   // попытка выйти из боя кампании (одна в день боя)
   liveEscape() {
     const w = this.liveWorld, wb = this.liveWb;
-    if (!w || !wb || this.escDay === w.day) return;
-    this.escDay = w.day;
+    if (!w || !wb || w.player.escDay === w.day) return;
     const ok = w.playerEscape();
     if (ok) {
       this.bannerText('ВЫ ВЫШЛИ ИЗ БОЯ', 'good');
@@ -87,7 +86,7 @@ const BattleUI = {
   refreshEscape() {
     const b = this.els && this.els.esc;
     if (!b || !this.liveWorld) return;
-    const used = this.escDay === this.liveWorld.day;
+    const used = this.liveWorld.player.escDay === this.liveWorld.day;
     b.disabled = used;
     b.title = used ? 'Сегодня попытка уже была — следующая завтра' : 'Попытаться оторваться от противника (одна попытка в день)';
   },
@@ -339,8 +338,10 @@ const BattleUI = {
     for (const s of b.ships) {
       const p = E.ports.get(s.id);
       if (!p) continue;
-      p.hp.style.width = (s.hp / s.s.maxHp * 100) + '%';
-      p.sh.style.width = (s.s.maxShield ? s.shield / s.s.maxShield * 100 : 0) + '%';
+      p.hp.style.width = U.clamp(s.hp / s.s.maxHp * 100, 0, 100) + '%';
+      // перезаряд щита сверх максимума не растягивает полосу за край карточки
+      p.sh.style.width = (s.s.maxShield ? U.clamp(s.shield / s.s.maxShield * 100, 0, 100) : 0) + '%';
+      p.sh.classList.toggle('over', s.shield > s.s.maxShield + 0.5);
       p.el.classList.toggle('active', s === act && s.alive);
       p.el.classList.toggle('viewed', s === this.view);
       p.el.classList.toggle('dead', !s.alive);
@@ -355,6 +356,7 @@ const BattleUI = {
     E.hpBar.style.width = pct(v.hp, v.s.maxHp);
     E.hpTxt.textContent = `Корпус ${Math.ceil(v.hp)} / ${v.s.maxHp}`;
     E.shBar.style.width = pct(v.shield, v.s.maxShield);
+    E.shBar.classList.toggle('over', v.shield > v.s.maxShield + 0.5);
     E.shTxt.textContent = v.s.maxShield ? `Щит ${Math.ceil(v.shield)} / ${v.s.maxShield}` : 'Нет генератора щита';
     const setM = (m, val, cap, txt) => {
       m.querySelector('.mb i').style.width = pct(val, cap);
@@ -434,7 +436,7 @@ const BattleUI = {
       this.human = { ship, res };
       this.setView(ship);
       Sound.yourTurn();
-      this.bannerText('ВАШ ХОД', 'good');
+      this.bannerText('ВАШ ХОД', 'good quick');
     });
   },
   aiPreview(ship, move) {

@@ -28,8 +28,13 @@ const Tip = {
   el: null,
   init() { this.el = document.getElementById('tooltip'); },
   bind(el, content) {
-    el.addEventListener('mouseenter', e => this.show(typeof content === 'function' ? content() : content, e));
-    el.addEventListener('mousemove', e => this.move(e));
+    // показываем только после настоящего движения мыши: элемент, возникший под неподвижным курсором, подсказку не вызывает
+    let armed = false;
+    el.addEventListener('mouseenter', () => { armed = true; });
+    el.addEventListener('mousemove', e => {
+      if (armed && (e.movementX || e.movementY)) { armed = false; this.show(typeof content === 'function' ? content() : content, e); }
+      else this.move(e);
+    });
     el.addEventListener('mouseleave', () => this.hide());
     return el;
   },
@@ -44,7 +49,7 @@ const Tip = {
     if (!this.el.classList.contains('show')) return;
     const r = this.el.getBoundingClientRect();
     let x = e.clientX + 16, y = e.clientY + 14;
-    if (x + r.width > innerWidth - 8) x = e.clientX - r.width - 16;
+    if (x + r.width > innerWidth - 8) x = Math.max(8, e.clientX - r.width - 16);
     if (y + r.height > innerHeight - 8) y = Math.max(8, innerHeight - r.height - 8);
     this.el.style.transform = `translate(${x}px, ${y}px)`;
   },

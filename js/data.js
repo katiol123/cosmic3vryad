@@ -166,17 +166,17 @@ const ARSENAL_T = [
 ];
 
 const DROID_T = [
-  { sub: 'basic', name: 'Ремонтный дроид', rPer: 15, rPass: 9, cleanse: 0, mass: 5, p: 1 },
-  { sub: 'field', name: 'Полевая мастерская', rPer: 25, rPass: 3, cleanse: 0, mass: 10, p: 1.2 },
-  { sub: 'swarm', name: 'Нанитовый рой', rPer: 12, rPass: 15, cleanse: 1, mass: 7, p: 1.3, minT: 2 },
-  { sub: 'purge', name: 'Дроид-чистильщик', rPer: 11, rPass: 7, cleanse: 2, mass: 6, p: 1.15, minT: 2 },
+  { sub: 'basic', name: 'Ремонтный дроид', rPer: 18, rPass: 11, cleanse: 0, mass: 5, p: 1 },
+  { sub: 'field', name: 'Полевая мастерская', rPer: 30, rPass: 4, cleanse: 0, mass: 10, p: 1.2 },
+  { sub: 'swarm', name: 'Нанитовый рой', rPer: 14, rPass: 18, cleanse: 1, mass: 7, p: 1.3, minT: 2 },
+  { sub: 'purge', name: 'Дроид-чистильщик', rPer: 13, rPass: 8, cleanse: 2, mass: 6, p: 1.15, minT: 2 },
 ];
 
 const COMPUTER_T = [
-  { sub: 'tgt', name: 'Прицельный компьютер', acc: 6, crit: 3, dPer: 1.5, mass: 6, p: 1 },
-  { sub: 'tac', name: 'Тактический ИИ', acc: 4, crit: 4, dPer: 2.5, mass: 8, p: 1.1 },
-  { sub: 'ball', name: 'Баллистический вычислитель', acc: 11, crit: 6, dPer: 1.2, mass: 9, p: 1.25, minT: 2 },
-  { sub: 'quant', name: 'Квантовый процессор', acc: 7, crit: 9, dPer: 3, mass: 10, p: 1.6, minT: 3 },
+  { sub: 'tgt', name: 'Прицельный компьютер', acc: 8, crit: 4, dPer: 1.5, mass: 6, p: 1 },
+  { sub: 'tac', name: 'Тактический ИИ', acc: 6, crit: 5, dPer: 2.5, mass: 8, p: 1.1 },
+  { sub: 'ball', name: 'Баллистический вычислитель', acc: 13, crit: 7, dPer: 1.2, mass: 9, p: 1.25, minT: 2 },
+  { sub: 'quant', name: 'Квантовый процессор', acc: 9, crit: 10, dPer: 3, mass: 10, p: 1.6, minT: 3 },
 ];
 
 const RADAR_T = [
@@ -329,8 +329,8 @@ const HULL_LIST = [];
   const mk = (m, a, b, c, d, e) => ({ terra: a, kron: b, veil: c, zot: d, aether: e })[m.id];
 
   genGeneric('shield', SHIELD_T, (T, t, m) => ({
-    max: Math.round(T.max * (1 + 0.3 * (t - 1)) * mk(m, 1, 1.2, 0.95, 0.9, 1.1)),
-    regen: U.r1(T.regen * (1 + 0.22 * (t - 1)) * mk(m, 1, 0.9, 1.05, 1.1, 1.15)),
+    max: Math.round(T.max * 0.85 * (1 + 0.3 * (t - 1)) * mk(m, 1, 1.2, 0.95, 0.9, 1.1)),
+    regen: U.r1(T.regen * 0.9 * (1 + 0.22 * (t - 1)) * mk(m, 1, 0.9, 1.05, 1.1, 1.15)),
     passive: Math.round(T.passive * (1 + 0.25 * (t - 1))),
     resist: Object.fromEntries(Object.entries(T.resist).map(([k, v]) => [k, Math.min(0.75, v + 0.03 * (t - 1))])),
     mass: Math.max(3, Math.round(mm(m, T.mass) * (1 - 0.04 * (t - 1)))),

@@ -5,6 +5,8 @@ for (const f of ['util', 'data', 'ship', 'board', 'ai', 'battle', 'world-data', 
   vm.runInThisContext(fs.readFileSync(path.join(root, 'js', f + '.js'), 'utf8'), { filename: f + '.js' });
 Clock.instant = true;
 const DAYS = +process.argv[2] || 300, SEED = process.argv[3] != null ? +process.argv[3] : 12345;
+// воспроизводимый прогон: один и тот же мир при одном и том же зерне
+Math.random = U.seeded(SEED * 7919 + 1);
 const pad = (s, n) => String(s).padEnd(n), lpad = (s, n) => String(s).padStart(n);
 
 function report(w) {

@@ -75,7 +75,8 @@ Object.assign(World.prototype, {
       const cap = this.planets[f.capital];
       if (cap && cap.owner === f.idx && cap.shipyard) {
         // завод столицы понемногу пополняет свой склад
-        if (Math.random() < 0.45 && this.yardFill(cap) < 1.1) for (const id of this.yardWants(cap, 1)) this.addStock(cap, id);
+        if (Math.random() < 0.45 && this.yardFill(cap) < 1.1 && cap.stock.metal >= 3 && cap.stock.tech >= 1.5)
+          for (const id of this.yardWants(cap, 1)) { this.addStock(cap, id); cap.stock.metal -= 3; cap.stock.tech -= 1.5; }
       }
       if (!cap || this.day % 2 || Math.random() > 0.7 || f.treasury < 600) continue;
       // самая опустевшая верфь фракции ждёт партию (если к ней уже не летит снабженец)
@@ -83,8 +84,12 @@ Object.assign(World.prototype, {
       const need = this.factionPlanets(f.idx).filter(p => p.shipyard && p.id !== cap.id && !busy.has(p.id) && this.yardFill(p) < 0.8)
         .sort((x, y) => this.yardFill(x) - this.yardFill(y))[0];
       if (!need) continue;
-      const batch = this.yardWants(need, U.ri(SUPPLY_BATCH[0], SUPPLY_BATCH[1]));
+      // партия делается из металла и электроники со склада столицы: торговля питает верфи
+      const can = Math.floor(Math.min(cap.stock.metal / 3, cap.stock.tech / 1.5));
+      const batch = this.yardWants(need, Math.min(can, U.ri(SUPPLY_BATCH[0], SUPPLY_BATCH[1])));
       if (!batch.length) continue;
+      cap.stock.metal -= batch.length * 3; cap.stock.tech -= batch.length * 1.5;
+      this.updatePlanetPrice(cap);
       f.treasury -= 400;
       const a = this.spawn('supply', f.idx, cap.sector, { home: cap.id });
       a.yardCargo = batch;

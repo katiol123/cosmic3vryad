@@ -29,13 +29,19 @@ Object.assign(World.prototype, {
   localSpeed(a) { return a.speed * 4.2; },
 
   // ---------- создание игрока ----------
+  // стартовый корабль рейнджера: корвет с основными системами ТУ II и свободным трюмом
+  starterDef(name) {
+    const hull = U.pick(HULL_LIST.filter(h => h.cls === 'corvette' && h.tier === 1));
+    const def = emptyDef(hull.id, name);
+    for (const k of ['armor', 'radar', 'ew', 'artifact']) def.slots[k] = def.slots[k].map(() => '-');
+    autoFill(def, 2);
+    for (const k of ['armor', 'radar', 'ew', 'artifact']) def.slots[k] = def.slots[k].map(() => null);
+    return def;
+  },
   createPlayer(name) {
     const yards = this.planets.filter(p => p.pop > 0 && p.owner >= 0 && p.shipyard && !this.factions[p.owner].wars.size);
     const home = U.pick(yards.length ? yards : this.planets.filter(p => p.pop > 0 && p.owner >= 0));
-    const hull = U.pick(HULL_LIST.filter(h => (h.cls === 'corvette' || h.cls === 'fighter') && h.maker === 'terra'));
-    const def = emptyDef(hull.id, name);
-    autoFill(def, 1);
-    def.slots.weapon = def.slots.weapon.map((w, i) => (i < 2 ? w : null)); // место под груз
+    const def = this.starterDef(name);
     const p = this.spawn('pilot', FREE, home.sector, { name, def, credits: 4000, ctrl: 'human', personality: { trade: 0, hunt: 0, merc: 0, loyal: 0 } });
     p.name = name; p.def.name = name;
     const [x, y] = this.planetPos(home);
@@ -137,7 +143,7 @@ Object.assign(World.prototype, {
     if (!pos) { p.target = null; return; }
     const [tx, ty] = pos;
     const d = Math.hypot(tx - p.sx, ty - p.sy), step = this.localSpeed(p);
-    const reach = p.target.type === 'ship' || p.target.type === 'battle' ? ENGAGE_R * 0.8 : 1;
+    const reach = p.target.type === 'ship' || p.target.type === 'battle' ? ENGAGE_R * 0.8 : p.target.type === 'base' ? 130 : 1;
     if (d - reach <= step) {
       const k = Math.max(0, d - reach) / Math.max(1, d);
       p.sx += (tx - p.sx) * k; p.sy += (ty - p.sy) * k;
@@ -182,6 +188,7 @@ Object.assign(World.prototype, {
         p.target = null;
         if (!this.pickDrop(p, this.dropById(t.id))) this.log('Обломки уже кто-то подобрал.', 'player');
         return;
+      case 'base': return this.playerSiege();
       case 'point': case 'quest':
         p.target = null;
         this.questReach(p);
@@ -190,6 +197,29 @@ Object.assign(World.prototype, {
     }
   },
 
+  // штурм пиратской станции: сначала охрана, потом обстрел, пока оборона не обнулится
+  playerSiege() {
+    const p = this.player;
+    const b = this.bases.find(x => x.alive && x.sector === p.loc);
+    if (!b) { p.target = null; return; }
+    const guards = this.present(p.loc).filter(o => o.faction === PIRATE && !o.battle);
+    if (guards.length) {
+      p.target = null;
+      this.log(`⚔ Охрана станции «${b.name}» вступает в бой! Разбейте её и продолжите штурм.`, 'player', { s: p.loc });
+      this.startBattle(p.loc, [p], guards.slice(0, 4));
+      return;
+    }
+    const dmg = this.strength(p) / 25;
+    b.defense -= dmg;
+    for (const q of (this.openQuests ? this.openQuests() : [])) if (q.type === 'base' && q.base === b.id) {
+      q.contrib[p.id] = (q.contrib[p.id] || 0) + dmg;
+      if (!q.takers.includes(p.id)) q.takers.push(p.id);
+    }
+    // станция отстреливается
+    p.hp = Math.max(1, p.hp - p.maxHp * 0.04);
+    if (b.defense <= 0) { p.target = null; this.destroyBase(b, p); return; }
+    this.log(`💥 Обстрел станции «${b.name}»: оборона ${Math.round(b.defense)}/${Math.round(b.maxDefense || 2500)}. Станция отвечает огнём.`, 'player', { s: p.loc });
+  },
   undock() { if (this.player) this.player.docked = null; },
 
   // ---------- погоня и бои с участием игрока ----------
@@ -211,10 +241,11 @@ Object.assign(World.prototype, {
   playerAttack(a) {
     const p = this.player;
     if (!a || !a.alive || a.battle || a.loc !== p.loc) return;
-    if (!this.hostile(p, a) && a.faction >= 0 && a.faction !== PIRATE) {
-      this.addRepRaw(p, a.faction, -35);
-      this.log(`⚠ Вы напали на корабль ${this.factions[a.faction].short} — репутация резко падает!`, 'player');
-    }
+    const af = a.kind === 'pilot' ? a.member : a.faction;
+    if (!this.hostile(p, a) && af >= 0 && af !== PIRATE) {
+      this.addRepRaw(p, af, -35);
+      this.log(`⚠ Вы напали на корабль ${this.factions[af].short} — репутация резко падает!`, 'player');
+    } else if (!this.hostile(p, a) && a.kind === 'pilot') this.log(`⚠ Вы напали на мирного наёмника ${a.name}. Его друзья среди фракций этого не забудут.`, 'player');
     const here = this.present(p.loc).filter(x => x.docked == null && x !== a);
     const foes = [a, ...here.filter(x => !x.battle && x.ctrl !== 'human' && x.faction === a.faction && x.faction !== FREE && !NONCOMBAT.includes(x.kind))];
     this.startBattle(p.loc, [p], foes);
@@ -237,6 +268,9 @@ Object.assign(World.prototype, {
     if (!wb) return true;
     const sh = wb.b.ships.find(s => s.ref === p.id && s.alive);
     if (!sh) return true;
+    // одна попытка в день, откуда бы её ни делали
+    if (p.escDay === this.day) { this.log('Сегодня попытка уйти уже была — следующая завтра.', 'player'); return false; }
+    p.escDay = this.day;
     const ch = U.clamp(0.3 + sh.s.thrust * 0.12 + sh.s.evasion * 0.006, 0.2, 0.85);
     if (Math.random() < ch) {
       wb.b.retreat(sh);
@@ -279,11 +313,15 @@ Object.assign(World.prototype, {
   // ---------- рынок ----------
   playerBuy(pl, good, qty) {
     const p = this.player;
-    const price = pl.price[good];
-    const n = Math.max(0, Math.min(qty, Math.floor(pl.stock[good]), p.cargoCap - this.cargoUsed(p), Math.floor(p.credits / price)));
+    const n0 = Math.max(0, Math.min(qty, Math.floor(pl.stock[good]), Math.floor(p.cargoCap - this.cargoUsed(p))));
+    const n = this.affordable(pl, good, n0, p.credits);
     if (!n) return 0;
-    p.credits -= n * price; pl.stock[good] -= n;
+    p.credits -= this.buyCost(pl, good, n); pl.stock[good] -= n;
     p.cargo[good] = (p.cargo[good] || 0) + n;
+    // откуда груз: купленное здесь же не считается помощью этой планете
+    p.cargoSrc = p.cargoSrc || {};
+    const src = p.cargoSrc[good] = p.cargoSrc[good] || {};
+    src[pl.id] = (src[pl.id] || 0) + n;
     this.updatePlanetPrice(pl);
     return n;
   },
@@ -291,13 +329,26 @@ Object.assign(World.prototype, {
     const p = this.player;
     const n = Math.max(0, Math.min(qty, Math.floor(p.cargo[good] || 0)));
     if (!n) return 0;
-    p.credits += n * pl.price[good] * 0.92;
-    this.questOnDeliver(p, pl, good, n);
+    p.credits += this.sellGain(pl, good, n);
+    // сначала уходит груз, купленный на других планетах — только он считается привезённым
+    const src = (p.cargoSrc = p.cargoSrc || {})[good] = (p.cargoSrc[good] || {});
+    const local = src[pl.id] || 0, other = Math.max(0, (p.cargo[good] || 0) - local);
+    const brought = Math.min(n, other);
+    let left = brought;
+    for (const k in src) { if (+k === pl.id || left <= 0) continue; const d = Math.min(left, src[k]); src[k] -= d; left -= d; if (src[k] <= 0) delete src[k]; }
+    if (n > brought) { src[pl.id] = Math.max(0, local - (n - brought)); if (!src[pl.id]) delete src[pl.id]; }
+    if (brought > 0) this.questOnDeliver(p, pl, good, brought);
     pl.stock[good] += n;
     p.cargo[good] -= n;
-    if (p.cargo[good] <= 0) delete p.cargo[good];
+    if (p.cargo[good] <= 0) { delete p.cargo[good]; delete p.cargoSrc[good]; }
     this.updatePlanetPrice(pl);
-    if (pl.owner >= 0 && pl.shortage > 0.2 && ['food', 'meds'].includes(good)) this.addRepRaw(p, pl.owner, Math.min(3, n / 10));
+    // репутация за помощь в дефиците — только за привезённое и не больше 3 за день на планете
+    if (brought > 0 && pl.owner >= 0 && pl.shortage > 0.2 && ['food', 'meds'].includes(good)) {
+      const key = pl.id + ':' + this.day;
+      p.aidRep = p.aidRep && p.aidRep.key === key ? p.aidRep : { key, v: 0 };
+      const d = Math.min(3 - p.aidRep.v, brought / 10);
+      if (d > 0) { p.aidRep.v += d; this.addRepRaw(p, pl.owner, d); }
+    }
     return n;
   },
 
@@ -326,7 +377,8 @@ Object.assign(World.prototype, {
   buyItem(cat, idx, id) {
     const p = this.player, it = ITEMS[id];
     const old = p.def.slots[cat][idx] ? ITEMS[p.def.slots[cat][idx]] : null;
-    const cost = this.shopPrice(it) - (old ? this.sellValue(old.id, slotWear(p.def, cat, idx)) : 0);
+    const insOld = old && (p.insuredItems || []).includes(old.id);
+    const cost = this.shopPrice(it) - (old ? (insOld ? Math.round(this.shopPrice(old) * 0.1) : this.sellValue(old.id, slotWear(p.def, cat, idx))) : 0);
     if (p.credits < cost) return 'Не хватает кредитов';
     if (defMass(p.def) - (old ? old.mass : 0) + it.mass > HULLS[p.def.hull].cap) return 'Не хватает вместимости корпуса';
     if (cat === 'artifact' && p.def.slots.artifact.includes(id)) return 'Такой артефакт уже установлен';
@@ -334,6 +386,7 @@ Object.assign(World.prototype, {
     if (pl && this.yard && !this.stockOf(pl, id)) return 'Этого уже нет на складе';
     p.credits -= cost;
     if (pl && this.yard) { this.takeStock(pl, id); if (old) this.addStock(pl, old.id); }
+    if (insOld) p.insuredItems.splice(p.insuredItems.indexOf(old.id), 1);
     p.def.slots[cat][idx] = id;
     setWear(p.def, cat, idx, 0);
     this.refreshKeep(p);
@@ -342,7 +395,9 @@ Object.assign(World.prototype, {
   sellItem(cat, idx) {
     const p = this.player, id = p.def.slots[cat][idx];
     if (!id) return;
-    p.credits += this.sellValue(id, slotWear(p.def, cat, idx));
+    const ins = (p.insuredItems || []).indexOf(id);
+    if (ins >= 0) { p.insuredItems.splice(ins, 1); p.credits += Math.round(this.shopPrice(ITEMS[id]) * 0.1); } // страховое — как лом
+    else p.credits += this.sellValue(id, slotWear(p.def, cat, idx));
     const pl = this.planets[p.docked];
     if (pl && pl.shipyard && this.addStock) this.addStock(pl, id); // проданное пополняет склад верфи
     p.def.slots[cat][idx] = null;
@@ -361,11 +416,11 @@ Object.assign(World.prototype, {
     // не поместившееся оборудование продаётся за полцены
     const order = ['artifact', 'armor', 'ew', 'radar', 'computer', 'droid', 'arsenal', 'shield', 'weapon', 'reactor', 'engine'];
     for (const k of order) for (let i = nd.slots[k].length - 1; i >= 0 && defMass(nd) > H.cap; i--) {
-      if (nd.slots[k][i]) { p.credits += Math.round(this.shopPrice(ITEMS[nd.slots[k][i]]) * 0.5); nd.slots[k][i] = null; }
+      if (nd.slots[k][i]) { p.credits += this.sellValue(nd.slots[k][i], slotWear(nd, k, i)); nd.slots[k][i] = null; }
     }
     // снятое из-за меньшего числа слотов — тоже продаём
     const before = defItems(p.def).map(i => i.id), after = defItems(nd).map(i => i.id);
-    for (const id of before) { const k = after.indexOf(id); if (k >= 0) after.splice(k, 1); else p.credits += Math.round(this.shopPrice(ITEMS[id]) * 0.5); }
+    for (const id of before) { const k = after.indexOf(id); if (k >= 0) after.splice(k, 1); else p.credits += this.sellValue(id, 0.3); }
     nd.name = p.name;
     p.def = nd;
     p.hp = null;
@@ -376,11 +431,11 @@ Object.assign(World.prototype, {
     return null;
   },
   // продать трофей из трюма
-  sellStash(id) {
-    const p = this.player, i = (p.stash || []).indexOf(id);
-    if (i < 0) return;
-    p.stash.splice(i, 1);
-    p.credits += this.sellValue(id, 0.3);
+  sellStash(i) {
+    const p = this.player;
+    if (!p.stash || i < 0 || i >= p.stash.length) return;
+    const { id, wear } = this.stashTake(p, i);
+    p.credits += this.sellValue(id, wear);
     const pl = this.planets[p.docked];
     if (pl && pl.shipyard && this.addStock) this.addStock(pl, id);
   },
@@ -452,11 +507,18 @@ Object.assign(World.prototype, {
     this.missionsP = this.missionsP.filter(x => x !== o);
     this.log(`✔ Задание выполнено: ${o.title}. Награда ${o.reward} кр.`, 'player', { s: pl ? pl.sector : null });
   },
+  // сколько единиц товара привезено с других планет (купленное здесь же не в счёт)
+  broughtQty(p, good, plId) { const src = (p.cargoSrc || {})[good] || {}; return Math.max(0, (p.cargo[good] || 0) - (src[plId] || 0)); },
+  takeBrought(p, good, plId, n) {
+    const src = (p.cargoSrc || {})[good] || {};
+    for (const k in src) { if (+k === plId || n <= 0) continue; const d = Math.min(n, src[k]); src[k] -= d; n -= d; if (src[k] <= 0) delete src[k]; }
+  },
   onDock(pl) {
     const p = this.player;
     for (const o of this.missionsP.slice()) {
       if (o.type === 'courier' && o.to === pl.id) { p.cargo.parcel = Math.max(0, (p.cargo.parcel || 0) - o.cargo); if (!p.cargo.parcel) delete p.cargo.parcel; this.missionDone(o, pl); }
-      else if (o.type === 'supply' && o.to === pl.id && (p.cargo[o.good] || 0) >= o.qty) {
+      else if (o.type === 'supply' && o.to === pl.id && this.broughtQty(p, o.good, pl.id) >= o.qty) {
+        this.takeBrought(p, o.good, pl.id, o.qty);
         p.cargo[o.good] -= o.qty; if (!p.cargo[o.good]) delete p.cargo[o.good];
         pl.stock[o.good] += o.qty; this.updatePlanetPrice(pl);
         this.missionDone(o, pl);
@@ -478,10 +540,10 @@ Object.assign(World.prototype, {
   },
   onPlayerKill(victim) {
     if (!this.missionsP) return;
-    for (const o of this.missionsP) {
-      if (o.type === 'bounty' && victim.faction === PIRATE) o.killed++;
-      if (o.type === 'war' && victim.faction === o.enemy) o.killed++;
-      if ((o.type === 'bounty' || o.type === 'war') && o.killed === o.count) this.log(`📜 Цель задания «${o.title}» достигнута — получите награду на планете ${this.factions[o.faction].short}.`, 'player');
-    }
+    // одна цель засчитывается только в одно задание — самое раннее из подходящих
+    const o = this.missionsP.find(o => o.killed < o.count && ((o.type === 'bounty' && victim.faction === PIRATE) || (o.type === 'war' && victim.faction === o.enemy)));
+    if (!o) return;
+    o.killed++;
+    if (o.killed === o.count) this.log(`📜 Цель задания «${o.title}» достигнута — получите награду на планете ${this.factions[o.faction].short}.`, 'player');
   },
 });

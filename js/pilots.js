@@ -105,15 +105,15 @@ Object.assign(World.prototype, {
     return Math.pow(off, 0.75 + 0.5 * P.hunt) * Math.pow(ehp, 0.35 + 0.4 * careful) * Math.pow(mob, 1 + 2 * P.trade) * misc;
   },
   // резерв на ремонт и на жизнь после потери корабля
-  pilotReserve(a) { return 800 + this.shopPrice({ price: defPrice(a.def) }) * 0.06; },
+  pilotReserve(a) { return Math.min(6000, 800 + this.shopPrice({ price: defPrice(a.def) }) * 0.06); },
   // торговец оставляет место под груз
   pilotMassLimit(a) { return HULLS[a.def.hull].cap * (1 - 0.35 * a.personality.trade); },
 
   pilotOutfit(a, pl) {
     // трофеи из трюма — на продажу (на верфи они пополнят склад)
     if (a.stash && a.stash.length && pl.shipyard) {
-      for (const id of a.stash) { a.credits += this.sellValue(id, 0.3); this.addStock(pl, id); }
-      a.stash = [];
+      a.stash.forEach((id, i) => { a.credits += this.sellValue(id, this.stashWear(a, i)); this.addStock(pl, id); });
+      a.stash = []; a.stashW = [];
     }
     // сначала ремонт: корпус, затем модули (на ремонт можно потратить и часть резерва)
     const reserve = this.pilotReserve(a);
@@ -126,7 +126,7 @@ Object.assign(World.prototype, {
     // корпус ограничивает рост: если модули уже под стать корпусу — копим на новый, покупая только крупные улучшения
     const plan = this.pilotHullPlan(a, pl);
     const saving = plan && this.shipTier(a) >= HULLS[a.def.hull].tier + 0.4;
-    const minGain = saving ? 0.15 : 0.03;
+    const minGain = saving ? 0.08 : 0.03;
     let bought = 0;
     for (let step = 0; step < 4; step++) {
       const budget = a.credits - reserve - (saving ? plan.cost : 0) * (saving ? 0.5 : 0);
@@ -215,22 +215,6 @@ Object.assign(World.prototype, {
     this.refreshKeep(a, true);
     this.log(`★ ${a.name} пересел на новый корпус: ${H.name} (ТУ ${U.roman(H.tier)}).`, 'pilot', { s: a.loc });
     return Math.max(1, cost);
-  },
-  // трофеи с уничтоженного пирата: обломки оборудования на продажу, игроку иногда — целый модуль
-  salvage(killer, victim) {
-    if (!killer || killer.kind !== 'pilot') return 0;
-    const its = defItems(victim.def).filter(it => it.cat !== 'artifact');
-    if (killer.ctrl === 'human' && its.length && Math.random() < 0.35) {
-      const it = U.pick(its);
-      killer.stash = killer.stash || [];
-      killer.stash.push(it.id);
-      this.log(`✧ Трофей: «${it.name}» (ТУ ${U.roman(it.tier)}) — в трюме, установить можно на верфи.`, 'player');
-      return 0;
-    }
-    const v = Math.round(this.shopPrice({ price: victim.price }) * U.rf(0.04, 0.09));
-    killer.credits += v;
-    if (killer.ctrl === 'human') this.log(`✧ Обломки ${victim.name} проданы как трофеи: +${v} кр.`, 'player');
-    return v;
   },
   // стоит ли лететь на верфь получше: есть деньги, а здешняя верфь (или её отсутствие) уже ничего не даёт
   pilotWantsYard(a, dock) {

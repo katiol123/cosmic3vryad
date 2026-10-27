@@ -47,13 +47,15 @@ Object.assign(World.prototype, {
     if (!this.quests) this.quests = [];
     // просроченные
     for (const q of this.openQuests()) if (this.day > q.deadline) this.questFail(q, 'срок истёк');
-    if (this.openQuests().length >= 9) return;
+    // общий лимит — без учёта спасения и охоты за головой (они возникают по событиям)
+    const board = () => this.openQuests().filter(q => q.type !== 'rescue' && q.type !== 'bounty').length;
+    if (board() >= 12) return;
     for (const f of this.factions) {
       if (!f.alive || (f.lastQuest && this.day - f.lastQuest < 6)) continue;
       if (this.openQuests().some(q => q.giver === f.idx && q.type !== 'rescue' && q.type !== 'bounty')) continue;
       const need = this.factionNeed(f);
       if (need) need();
-      if (this.openQuests().length >= 9) break;
+      if (board() >= 12) break;
     }
   },
 
@@ -64,16 +66,16 @@ Object.assign(World.prototype, {
     const opts = [];
     // 1) пираты грабят караваны — главарь
     const loss = f.st.recentPirateLoss || 0;
-    if (loss > 2500) opts.push([loss / 1000, () => this.questBoss(f)]);
+    if (loss > 2500) opts.push([loss / 1000, () => this.questBoss(f), 'boss']);
     // 2) пиратская база под боком
     const base = this.bases.find(b => b.alive && near(b.sector));
-    if (base && loss > 1200 && !this.openQuests().some(q => q.type === 'base' && q.base === base.id)) opts.push([2 + loss / 2000, () => this.questBase(f, base)]);
+    if (base && loss > 1200 && !this.openQuests().some(q => q.type === 'base' && q.base === base.id)) opts.push([2 + loss / 2000, () => this.questBase(f, base), 'base']);
     // 3) дефицит на планете
     for (const p of this.factionPlanets(f.idx)) {
       for (const g of ['meds', 'food']) {
         const t = this.target(p, g);
         if (p.stock[g] < t * 0.1 && p.shortage > 0.3 && p.stability < 0.5 && !this.openQuests().some(q => q.type === 'aid' && q.giver === f.idx))
-          opts.push([1 + p.shortage * 3, () => this.questAid(f, p, g)]);
+          opts.push([1 + p.shortage * 3, () => this.questAid(f, p, g), 'aid']);
       }
     }
     // 4) война: разведка, если проигрываем; удар по снабжению — всегда; мир — если миролюбивы и война затянулась
@@ -83,14 +85,17 @@ Object.assign(World.prototype, {
       const myPow = U.sum([...this.agents.values()].filter(a => a.faction === f.idx), a => this.strength(a));
       const enPow = U.sum([...this.agents.values()].filter(a => a.faction === e), a => this.strength(a));
       const len = this.day - (f.warSince[e] || this.day);
-      if (myPow < enPow * 0.9 || f.st.lostPlanets > 0) opts.push([2.5, () => this.questRecon(f, E)]);
-      opts.push([1.5 + f.war, () => this.questConvoy(f, E)]);
+      if (myPow < enPow * 0.9 || f.st.lostPlanets > 0) opts.push([2.5, () => this.questRecon(f, E), 'recon']);
+      opts.push([1.5 + f.war, () => this.questConvoy(f, E), 'convoy']);
       if (len > 18 && f.diplo > 0.45 && !this.openQuests().some(q => q.type === 'peace' && [q.giver, q.enemy].includes(f.idx)))
-        opts.push([1 + f.diplo * 3 + len / 30, () => this.questPeace(f, E)]);
+        opts.push([1 + f.diplo * 3 + len / 30, () => this.questPeace(f, E), 'peace']);
     }
     // 5) отставание в технологиях
     const avg = U.sum(this.factions.filter(x => x.alive), x => x.tech) / this.factions.filter(x => x.alive).length;
-    if (f.tech < 5 && f.tech <= avg - 0.3 && !this.openQuests().some(q => q.type === 'relic')) opts.push([1.5, () => this.questRelic(f)]);
+    if (f.tech < 5 && f.tech <= avg - 0.3 && !this.openQuests().some(q => q.type === 'relic')) opts.push([1.5, () => this.questRelic(f), 'relic']);
+    // не больше трёх открытых поручений одного типа
+    const busy = t => this.openQuests().filter(q => q.type === t).length >= 3;
+    for (let i = opts.length - 1; i >= 0; i--) if (busy(opts[i][2])) opts.splice(i, 1);
     if (!opts.length) return null;
     opts.sort((a, b) => b[0] - a[0]);
     return Math.random() < 0.35 ? opts[0][1] : null;
@@ -155,7 +160,7 @@ Object.assign(World.prototype, {
   questRescue(f, sector, point, lostName) {
     if (this.openQuests().filter(q => q.type === 'rescue').length >= 2) return;
     this.makeQuest('rescue', f, {
-      sector, point, titleExtra: this.sectors[sector].name, reward: 1800 + Math.round(Math.random() * 1200), rep: 12, deadline: this.day + 8,
+      sector, point, titleExtra: this.sectors[sector].name, reward: 1800 + Math.round(Math.random() * 1200), rep: 12, deadline: this.day + 14,
       ambush: Math.random() < 0.3,
       reason: `наш корабль «${lostName}» погиб в секторе ${this.sectors[sector].name}. Возможно, кто-то выжил — найдите спасательные капсулы на месте гибели.`,
     });
@@ -201,6 +206,7 @@ Object.assign(World.prototype, {
     if (q.status !== 'open') return 'Поручение уже закрыто';
     if (q.exclusive && q.taken && q.taken !== a.id) return 'Поручение уже взял другой пилот';
     if (q.type === 'bounty' && q.target === a.id) return 'Это награда за вашу голову';
+    if (q.type === 'convoy' && a.member !== q.giver) return `Только для служащих ${this.factions[q.giver].short}`;
     if (q.type === 'peace' && (a.rep[q.enemy] || 0) <= -40) return 'Враг не примет вас как посланника';
     if ((a.rep[q.giver] || 0) <= -30) return `${this.factions[q.giver].short} вам не доверяет`;
     return null;
@@ -356,7 +362,7 @@ Object.assign(World.prototype, {
       }
       if (q.type === 'boss' && victim.id === q.boss) {
         if (killer && killer.kind === 'pilot') this.questComplete(q, killer);
-        else this.questComplete(q, null, killer ? `главаря уничтожил ${this.who(killer)}` : 'главарь погиб');
+        else this.questFail(q, killer ? `главаря уничтожил ${this.who(killer)}, награда никому не досталась` : 'главарь погиб');
       } else if (q.type === 'convoy' && killer && killer.kind === 'pilot' && victim.faction === q.enemy && victim.kind === 'trader') {
         q.kills[killer.id] = (q.kills[killer.id] || 0) + 1;
         q.contrib[killer.id] = 1;
@@ -454,8 +460,7 @@ Object.assign(World.prototype, {
   questKeepRelic(q) {
     const p = this.player;
     if (q.holder !== p.id) return;
-    p.stash = p.stash || [];
-    p.stash.push(q.artifact);
+    this.stashAdd(p, q.artifact, 0);
     q.status = 'failed';
     this.addRepRaw(p, q.giver, -10);
     this.log(`✧ Вы оставили реликвию себе: «${ITEMS[q.artifact].name}» в трюме. ${this.factions[q.giver].short} недовольна (−10).`, 'player');

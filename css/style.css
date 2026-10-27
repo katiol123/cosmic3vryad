@@ -611,3 +611,63 @@ select { background: rgba(10,16,36,.9); border: 1px solid var(--line); border-ra
 .gauge.wear-g i { background: linear-gradient(90deg, #2a9d8f, #5ee0c8); }
 .gauge.wear-g.bad i { background: linear-gradient(90deg, #b5452b, #ff8c42); }
 .btn.small { padding: 5px 10px; font-size: 12px; }
+
+/* ---------- правки по визуальному ревью ---------- */
+/* перезаряд щита сверх максимума — светлая полоса */
+.pbars { overflow: hidden; }
+.pbars i.over, .gauge.sh i.over { background: linear-gradient(90deg, #3a86ff, #9cc3ff 60%, #e6f1ff); box-shadow: 0 0 14px rgba(156,195,255,.9); }
+/* станция: фиксированная высота, не прыгает при смене вкладок; карточка пилота не выглядывает */
+.sx-dock { align-items: flex-start; }
+.dk { height: 100%; }
+.dk-body { min-height: 0; }
+.sx-dock.show ~ .sx-hud, .sx-map:has(.sx-dock.show) .sx-hud, .sx-map:has(.sx-dock.show) .gx-legend { visibility: hidden; }
+@media (max-width: 1000px) {
+  .sx-dock { position: fixed; inset: 0; padding: 0; z-index: 50; align-items: stretch; }
+  .dk { width: 100%; height: 100%; max-height: none; border-radius: 0; padding: 10px; }
+  .dk-head { flex-wrap: wrap; }
+  .dk-head .btn.big { order: 3; width: 100%; }
+  .dk-planet { width: 64px; height: 64px; }
+}
+/* читаемость: служебный текст крупнее и светлее */
+.gx-legend { font-size: 12px; color: #a9b8de; background: rgba(2,4,12,.7); padding: 4px 10px; border-radius: 8px; }
+.fs { font-size: 12px; }
+.relbar { background: rgba(255,255,255,.12); }
+.relbar::after { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: rgba(255,255,255,.35); }
+/* заголовок поручения: тег фракции не отрывается от названия */
+.gx-pl .pn { flex-wrap: wrap; }
+.gx-pl .pn > span { white-space: nowrap; }
+/* журнал боя — единое выравнивание */
+.le.sys { text-align: left; padding-left: 8px; }
+/* «ВАШ ХОД» поверх поля — короче, чтобы не мешать собирать блоки */
+.bp-banner.quick.show { animation-duration: .9s; }
+/* меню помещается в 900px по высоте */
+.menu-inner { gap: 18px; }
+.mcard { padding: 20px; }
+@media (max-width: 560px) {
+  .logo-main { letter-spacing: 2px; }
+  .logo-sub { letter-spacing: 1.5px; font-size: 12px; }
+}
+/* мобильный бой: карта боя компактной полосой над полем блоков */
+@media (max-width: 1000px) {
+  .bt-right { order: -1; grid-template-rows: 34vh 110px; }
+  .bt-ctrl { flex-wrap: nowrap; overflow-x: auto; }
+}
+/* вкладка «Фракция» */
+.fc-card { border: 1px solid color-mix(in srgb, var(--fc) 45%, transparent); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--fc) 14%, transparent), rgba(8,13,30,.6)); }
+.fc-head { display: flex; gap: 12px; align-items: center; }
+.fc-emblem { width: 52px; height: 52px; flex: none; border-radius: 50%; display: grid; place-items: center; font-family: var(--head); font-size: 26px; color: #fff;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--fc) 80%, #fff), var(--fc) 55%, #000 120%); box-shadow: 0 0 18px color-mix(in srgb, var(--fc) 60%, transparent); }
+.fc-name { font-family: var(--head); font-size: 20px; color: var(--fc); }
+.fc-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.fc-stats > div { background: rgba(0,0,0,.25); border-radius: 10px; padding: 8px; text-align: center; }
+.fc-stats b { display: block; font-size: 18px; } .fc-stats span { font-size: 11px; color: var(--dim); }
+.fc-rep { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; font-size: 13px; }
+.fc-rep .relbar { height: 8px; }
+.fc-act { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+@media (max-width: 560px) { .fc-stats { grid-template-columns: repeat(2, 1fr); } }
+.mk-row { grid-template-columns: 1.6fr .55fr .55fr .6fr .55fr auto; }
+.mk-btns { justify-content: flex-end; }
+.ok-note { padding: 10px 12px; border-radius: 10px; background: rgba(46,230,107,.08); border: 1px solid rgba(46,230,107,.3); color: #a6ffc4; font-size: 13px; margin: 4px 0 8px; }
+.gx-f.me { border: 1px solid rgba(255,224,102,.5); background: rgba(255,224,102,.07); border-radius: 10px; }
+.gx-side .stats { grid-template-columns: 1fr; } .gx-side .stats .stat-v, .gx-side .stats > div > :last-child { white-space: normal; }

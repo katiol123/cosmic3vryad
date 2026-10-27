@@ -41,12 +41,12 @@ const GalaxyUI = {
     E.play = h('button', { class: 'btn', onclick: () => this.togglePlay() }, '▶ Авто');
     const speed = seg([[0.7, '½'], [1.5, '1×'], [4, '3×'], [10, '8×']], this.daysPerSec, v => { this.daysPerSec = v; }, 'small');
     el.appendChild(this.pilotMode ? h('div', { class: 'topbar' },
-      h('button', { class: 'btn primary', onclick: () => SectorUI.backFromGalaxy() }, '↩ В сектор'),
+      h('button', { class: 'btn', onclick: () => SectorUI.backFromGalaxy() }, '← В сектор'),
       h('h2', null, 'Карта галактики'),
       E.day,
       h('div', { class: 'grow' }),
       h('span', { class: 'dim' }, 'Выберите сектор и проложите курс — корабль полетит через гиперворота сам'),
-      h('button', { class: 'btn', onclick: () => SectorUI.nextDay().then(() => this.refresh()) }, '⏭ Ход')) : h('div', { class: 'topbar' },
+      h('button', { class: 'btn primary big', onclick: () => SectorUI.nextDay().then(() => this.refresh()) }, '⏭ Ход')) : h('div', { class: 'topbar' },
       h('button', { class: 'btn ghost', onclick: () => this.close() }, '← Меню'),
       h('h2', null, 'Галактика'),
       E.day,
@@ -303,12 +303,13 @@ const GalaxyUI = {
     const w = this.world, B = this.els.body;
     const pilots = [...w.agents.values()].filter(a => a.kind === 'pilot').sort((a, b) => b.credits - a.credits);
     for (const p of pilots) {
-      const row = h('div', { class: 'gx-f', onclick: () => { this.sel = { type: 'agent', id: p.id }; this.tab = 'sel'; this.refresh(); } },
+      const tt = this.taskText(p), showIntent = p.intent && p.ctrl !== 'human' && !tt.startsWith(p.intent);
+      const row = h('div', { class: 'gx-f' + (p.ctrl === 'human' ? ' me' : ''), onclick: () => { this.sel = { type: 'agent', id: p.id }; this.tab = 'sel'; this.refresh(); } },
         h('img', { class: 'pimg2', src: GFX.shipImage(p.def.hull, 0, 80) }),
         h('div', { class: 'fb' },
           h('div', { class: 'fn' }, p.name, p.member >= 0 ? h('span', { style: { color: w.factions[p.member].color } }, ` [${w.factions[p.member].short}]`) : h('span', { class: 'dim' }, ' [наёмник]')),
           h('div', { class: 'fs' }, `${HULLS[p.def.hull].name} · ТУ ${w.shipTier(p).toFixed(1)} · 💰 ${Math.round(p.credits).toLocaleString('ru')} · ☠ ${p.kills}`),
-          h('div', { class: 'fs dim' }, (p.intent && p.ctrl !== 'human' ? '🧠 ' + p.intent + ' · ' : '') + this.taskText(p))));
+          h('div', { class: 'fs dim' }, (showIntent ? '🧠 ' + p.intent + ' · ' : '') + tt)));
       B.appendChild(row);
     }
   },
@@ -458,10 +459,16 @@ const GalaxyUI = {
         ctx.strokeStyle = sel ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1.5 * d;
         ctx.beginPath(); ctx.arc(x, y, 60 * z, 0, Math.PI * 2); ctx.stroke();
       }
-      ctx.font = `600 ${Math.max(10, 12 * Math.min(1.4, z + 0.3)) * d}px "Exo 2", sans-serif`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillStyle = s.owner >= 0 ? U.rgba(w.factions[s.owner].color, 0.95) : 'rgba(200,210,230,0.75)';
-      ctx.fillText(s.name, x, y + 62 * z);
+      // на узком экране подписи мешают друг другу: показываем только важные, остальные — по нажатию
+      const narrow = this.els.cv.width / d < 640 && z < 0.9;
+      if (!narrow || sel || hov || (w.player && w.player.loc === s.id)) {
+        ctx.font = `600 ${Math.max(11, 12 * Math.min(1.4, z + 0.3)) * d}px "Exo 2", sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.lineWidth = 3.5 * d; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(2,4,12,0.85)';
+        ctx.strokeText(s.name, x, y + 62 * z);
+        ctx.fillStyle = s.owner >= 0 ? U.rgba(w.factions[s.owner].color, 0.95) : 'rgba(220,228,245,0.9)';
+        ctx.fillText(s.name, x, y + 62 * z);
+      }
     }
     // корабли
     for (const a of w.agents.values()) {
