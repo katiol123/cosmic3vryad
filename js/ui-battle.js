@@ -49,6 +49,8 @@ const BattleUI = {
       h('div', { class: 'bi-main' }, 'К БОЮ!'),
       h('div', { class: 'bi-sub' }, watch ? 'Режим наблюдателя · щёлкните по кораблю, чтобы увидеть его поле' : 'Собирайте блоки на своём поле — корабль сам манёврирует и стреляет'));
     this.els.root.appendChild(el);
+    Sound.intro();
+    Sound.startDrone();
     return Clock.wait(2100).then(() => { el.classList.add('out'); setTimeout(() => el.remove(), 600); });
   },
 
@@ -63,10 +65,15 @@ const BattleUI = {
     E.turn = h('div', { class: 'bt-turn' }, '—');
     E.pause = h('button', { class: 'ibtn', title: 'Пауза (пробел)', onclick: () => this.togglePause() }, '⏸');
     E.follow = h('button', { class: 'ibtn on', title: 'Камера следует за активным кораблём', onclick: () => { this.follow = !this.follow; E.follow.classList.toggle('on', this.follow); if (this.follow && this.battle.active) this.setView(this.battle.active); } }, '🎥');
-    const speeds = seg([[0.5, '½×'], [1, '1×'], [2, '2×'], [4, '4×']], Clock.speed, v => { Clock.speed = v; Store.set('speed', v); }, 'small');
+    const speeds = seg([[0.5, '½×'], [1, '1×'], [2, '2×'], [4, '4×'], [8, '8×']], Clock.speed, v => { Clock.speed = v; Store.set('speed', v); }, 'small');
+    E.queue = h('div', { class: 'bt-queue' });
+    Info.helpBind(E.queue, 'Инициатива');
     const center = h('div', { class: 'bt-center' },
       h('div', { class: 'bt-info' }, E.round, E.turn),
+      E.queue,
       h('div', { class: 'bt-ctrl' }, E.pause, speeds, E.follow,
+        E.snd = h('button', { class: 'ibtn' + (Sound.on ? ' on' : ''), title: 'Звук', onclick: () => { E.snd.classList.toggle('on', Sound.toggle()); E.snd.textContent = Sound.on ? '🔊' : '🔇'; } }, Sound.on ? '🔊' : '🔇'),
+        E.mus = h('button', { class: 'ibtn' + (Sound.musicOn ? ' on' : ''), title: 'Фоновая музыка', onclick: () => E.mus.classList.toggle('on', Sound.toggleMusic()) }, '🎵'),
         h('button', { class: 'ibtn', title: 'Справочник', onclick: () => Modal.help() }, '?'),
         h('button', { class: 'ibtn danger', title: 'Покинуть бой', onclick: () => this.exit() }, '⏏')));
     const top = h('div', { class: 'bt-top' }, E.p0, center, E.p1);
@@ -77,9 +84,13 @@ const BattleUI = {
     E.headHull = h('div', { class: 'bp-hull' });
     E.headCtrl = h('span', { class: 'badge' });
     E.target = h('div', { class: 'bp-target' });
+    E.target.addEventListener('mouseover', e => { const k = e.target.dataset && e.target.dataset.h; if (k) Tip.show(Info.statTip(k), e); });
+    E.target.addEventListener('mouseout', () => Tip.hide());
     E.hpBar = h('i'); E.hpTxt = h('span'); E.shBar = h('i'); E.shTxt = h('span');
     E.hp = h('div', { class: 'gauge hp', 'data-res': '3' }, E.hpBar, E.hpTxt);
     E.sh = h('div', { class: 'gauge sh', 'data-res': '2' }, E.shBar, E.shTxt);
+    Info.helpBind(E.hpTxt, 'Корпус');
+    Info.helpBind(E.shTxt, 'Щит');
     E.canvas = h('canvas', { class: 'board-cv' });
     E.banner = h('div', { class: 'bp-banner' });
     E.yourTurn = h('div', { class: 'your-turn', onclick: () => { if (this.human) this.setView(this.human.ship); } }, '');
@@ -87,6 +98,7 @@ const BattleUI = {
       const m = h('div', { class: 'meter m-' + key, 'data-res': String(res) },
         h('img', { src: GFX.block(res, 48).toDataURL() }),
         h('div', { class: 'mt' }, h('div', { class: 'ml' }, label), h('div', { class: 'mb' }, h('i')), h('div', { class: 'mv' })));
+      Info.helpBind(m.querySelector('.ml'), label);
       return m;
     };
     E.mE = meter('e', 0, 'Энергия');
@@ -107,7 +119,8 @@ const BattleUI = {
       h('div', { class: 'bp-gauges' }, E.hp, E.sh),
       h('div', { class: 'bp-board' }, E.canvas, E.banner, E.yourTurn),
       h('div', { class: 'bp-meters' }, E.mE, E.mA, E.mD, E.mT),
-      h('div', { class: 'bp-tac' }, h('span', null, 'Тактика:'), E.tactic),
+      h('div', { class: 'bp-tac' }, Info.helpBind(h('span', null, 'Тактика:'), 'Тактика'), E.tactic),
+      E.stats = h('div', { class: 'bp-stats' }),
       E.status,
       E.weap);
 
@@ -233,6 +246,7 @@ const BattleUI = {
     Clock.clear();
     Clock.paused = false;
     this.active = false;
+    Sound.stopDrone();
   },
 
   // ---------- Обновление интерфейса ----------
@@ -242,8 +256,16 @@ const BattleUI = {
     E.round.textContent = `Раунд ${b.round}`;
     const act = b.active;
     E.turn.innerHTML = act ? `Ход: <b class="c${act.side}">${act.name}</b>` : '—';
-    const order = b.order.filter(s => s.alive);
-    const ai = act ? order.indexOf(act) : -1;
+    // шкала ближайших ходов
+    const fc = b.forecast(9);
+    const fkey = (act ? act.id : 0) + ':' + fc.map(s => s.id).join(',');
+    if (fkey !== this._fkey) {
+      this._fkey = fkey;
+      E.queue.innerHTML = '';
+      const list = act && act.alive ? [act, ...fc] : fc;
+      list.forEach((s, i) => E.queue.appendChild(h('div', { class: `q s${s.side}${i === 0 && s === act ? ' now' : ''}`, style: { animationDelay: i * 0.03 + 's' } },
+        h('img', { src: GFX.shipImage(s.hull.id, s.side, 80) }))));
+    }
     for (const s of b.ships) {
       const p = E.ports.get(s.id);
       if (!p) continue;
@@ -254,8 +276,8 @@ const BattleUI = {
       p.el.classList.toggle('dead', !s.alive);
       p.el.classList.toggle('targeted', !!(act && act.target === s));
       p.el.classList.toggle('low', s.alive && s.hpFrac < 0.3);
-      const k = order.indexOf(s);
-      p.ord.textContent = s.alive && k >= 0 && ai >= 0 ? (k === ai ? '▶' : k > ai ? String(k - ai) : '') : '';
+      const k = fc.indexOf(s);
+      p.ord.textContent = !s.alive ? '' : s === act ? '▶' : k >= 0 ? String(k + 1) : '';
     }
     const v = this.view;
     if (!v) return;
@@ -273,7 +295,19 @@ const BattleUI = {
     setM(E.mD, v.data, v.s.dCap, `${Math.floor(v.data)}/${v.s.dCap}`);
     setM(E.mT, v.evasion, 65, `укл. ${Math.round(v.evasion)}%`);
     const t = v.target && v.target.alive ? v.target : null;
-    E.target.innerHTML = t ? `Цель: <b class="c${t.side}">${t.name}</b> · дистанция ${U.r1(b.dist(v, t))}` : (v.alive ? 'Цель не выбрана' : '<b class="red">Уничтожен</b>');
+    if (t) {
+      const asp = b.aspect(v, t);
+      E.target.innerHTML = `Цель: <b class="c${t.side}">${t.name}</b> · <span class="help-lab" data-h="Дистанция">дист. ${U.r1(b.dist(v, t))}</span>${asp !== 'front' ? ` · <b class="gold">${FLANK[asp].name} ×${FLANK[asp].k}</b>` : ''}`;
+    } else E.target.innerHTML = v.alive ? 'Цель не выбрана' : '<b class="red">Уничтожен</b>';
+    // компактная строка характеристик с подсказками
+    const sv = [['Броня', Info.pct(v.armor)], ['Уклонение', Math.round(v.evasion) + '%'], ['Инициатива', v.s.init], ['Поворот', Math.round(v.s.turn) + '°'],
+      ['Точность', '+' + v.s.acc + '%'], ['Крит', v.s.crit + '%'], ['Защита систем', Info.pct(v.s.ewRes)]];
+    const skey = sv.map(x => x[1]).join('|') + v.id;
+    if (skey !== this._skey) {
+      this._skey = skey;
+      E.stats.innerHTML = '';
+      for (const [k, val] of sv) E.stats.appendChild(Info.helpBind(h('span', { class: 'bst' }, `${k} `, h('b', null, String(val))), k));
+    }
     for (const r of E.wrows || []) {
       const w = r.w;
       r.bar.style.width = pct(w.charge, w.cap);
@@ -329,15 +363,19 @@ const BattleUI = {
     return new Promise(res => {
       this.human = { ship, res };
       this.setView(ship);
+      Sound.yourTurn();
       this.bannerText('ВАШ ХОД', 'good');
     });
   },
   aiPreview(ship, move) {
     this.bv.preview = move;
-    return Clock.wait(330).then(() => { this.bv.preview = null; });
+    return Clock.wait(260).then(() => { this.bv.preview = null; });
   },
   onGain(ship, res, g, cascade) {
     if (this.view !== ship) return;
+    const types = [];
+    res.counts.forEach((v, i) => { if (v) types.push(i); });
+    if (types.length) Sound.pop(types, cascade);
     if (cascade >= 2) this.bv.text(this.bv.ox + this.bv.cs * 4, this.bv.oy + this.bv.cs * 0.8, `КАСКАД ×${cascade}`, '#ffe066', 0.9, 1 + cascade * 0.08);
     const parts = [];
     if (g.energy) parts.push(['+' + Math.round(g.energy), 0]);
@@ -355,6 +393,7 @@ const BattleUI = {
     }
   },
   banner(ship, txt, cls) {
+    if (cls === 'good' && txt.startsWith('ФОРСАЖ')) Sound.extra();
     this.arena.banner(ship, txt, cls);
     if (this.view === ship) this.bannerText(txt, cls);
   },
@@ -407,5 +446,7 @@ const BattleUI = {
         h('button', { class: 'btn', onclick: () => { Modal.close(); this.stop(); Setup.open(); } }, '⚙ К подготовке'),
         h('button', { class: 'btn ghost', onclick: () => { Modal.close(); this.stop(); Menu.build(); Screens.show('scr-menu'); } }, 'В меню')));
     Modal.open(box, 'wide');
+    Sound.stopDrone();
+    Sound.victory(w >= 0 && (humanSide < 0 || bothHuman || w === humanSide));
   },
 };

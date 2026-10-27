@@ -467,3 +467,20 @@ select { background: rgba(10,16,36,.9); border: 1px solid var(--line); border-ra
 
 /* В бою холсты перерисовываются каждый кадр — размытие фона под ними слишком дорогое */
 #scr-battle .panel, #scr-battle .bt-top { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(8, 13, 30, 0.92); }
+.help-lab { cursor: help; border-bottom: 1px dotted rgba(156,195,255,.45); }
+.help-lab:hover { color: #fff; border-bottom-color: #7df9ff; }
+.help-tt { max-width: 340px; }
+.tt-text { line-height: 1.5; color: #c9d6f5; }
+.stats-help > div { padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.stats-help b { color: #9cc3ff; }
+.bt-queue { display: flex; gap: 3px; align-items: center; padding: 2px 6px; border-radius: 8px; background: rgba(0,0,0,.3); border: 1px solid var(--line); max-width: 100%; overflow: hidden; }
+.bt-queue .q { width: 30px; height: 22px; border-radius: 5px; display: flex; align-items: center; justify-content: center; animation: cardIn .3s both; border: 1px solid transparent; }
+.bt-queue .q img { max-width: 26px; max-height: 18px; }
+.bt-queue .q.s0 { background: rgba(76,201,240,.12); }
+.bt-queue .q.s1 { background: rgba(255,107,53,.12); }
+.bt-queue .q.s1 img { transform: scaleX(-1); }
+.bt-queue .q.now { border-color: var(--gold); box-shadow: 0 0 10px rgba(255,224,102,.5); width: 36px; }
+.bp-stats { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 2px 12px 4px; font-size: 11px; color: var(--dim); }
+.bp-stats .bst b { color: var(--text); font-weight: 700; }
+.gold { color: var(--gold); }
+.gauge span.help-lab { border-bottom: 0; }

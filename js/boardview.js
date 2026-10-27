@@ -71,6 +71,7 @@ class BoardView {
           if (v) { v.mode = 'swap'; v.sx = q[1]; v.sy = q[0]; v.tt = 0; v.td = 0.2; }
         }
         this.sel = null; this.hint = null; this.preview = null;
+        Sound.swap();
         break;
       }
       case 'pop': {
@@ -92,17 +93,20 @@ class BoardView {
         break;
       }
       case 'line': {
+        Sound.special('line');
         this.fx.push({ k: 'line', r: ev.r, c: ev.c, dir: ev.dir, t: 0, d: 0.5, col: ev.t < 6 ? BLOCKS[ev.t].glow : '#fff', wide: ev.wide });
         this.shake = Math.max(this.shake, 6);
         break;
       }
       case 'bomb': {
+        Sound.special('bomb');
         this.fx.push({ k: 'ring', x: px(ev.c), y: py(ev.r), t: 0, d: 0.55, rad: (ev.rad + 0.8) * cs * 1.2, col: ev.t < 6 ? BLOCKS[ev.t].glow : '#fff' });
         this.fx.push({ k: 'flash', x: px(ev.c), y: py(ev.r), t: 0, d: 0.3, rad: (ev.rad + 1) * cs });
         this.shake = Math.max(this.shake, 10 + ev.rad * 4);
         break;
       }
       case 'nova': {
+        Sound.special('nova');
         this.fx.push({ k: 'nova', x: px(ev.c), y: py(ev.r), t: 0, d: 0.6, targets: ev.targets.map(([r, c]) => [px(c), py(r)]),
           col: ev.t >= 0 && ev.t < 6 ? BLOCKS[ev.t].glow : '#ffffff' });
         this.fx.push({ k: 'ring', x: px(ev.c), y: py(ev.r), t: 0, d: 0.7, rad: cs * 5, col: '#ffffff' });
@@ -110,6 +114,7 @@ class BoardView {
         break;
       }
       case 'make': {
+        Sound.special('make');
         const x = this.board.at(ev.r, ev.c);
         const v = x && this.vis.get(x.id);
         if (v) v.pulse = 1;
@@ -119,6 +124,7 @@ class BoardView {
         break;
       }
       case 'inject': {
+        if (ev.cells.length) Sound.special('inject');
         const col = { jam: '#a0a6b0', freeze: '#9be7ff', virus: '#b6ff3b', mine: '#ff4d4d' }[ev.kind] || '#fff';
         for (const [r, c] of ev.cells) {
           this.fx.push({ k: 'inject', x: px(c), y: py(r), t: 0, d: 0.6, col });
@@ -133,6 +139,7 @@ class BoardView {
         break;
       }
       case 'mine': {
+        Sound.boom(false);
         this.fx.push({ k: 'ring', x: px(ev.c), y: py(ev.r), t: 0, d: 0.5, rad: cs * 2, col: '#ff6b35' });
         this.fx.push({ k: 'flash', x: px(ev.c), y: py(ev.r), t: 0, d: 0.35, rad: cs * 2 });
         this.burst(px(ev.c), py(ev.r), '#ffb347', 30, 1.6);
@@ -141,6 +148,7 @@ class BoardView {
         break;
       }
       case 'cleanse': {
+        Sound.special('cleanse');
         for (const [r, c] of ev.cells) {
           this.burst(px(c), py(r), '#a6ffc4', 8, 0.7);
           this.fx.push({ k: 'ring', x: px(c), y: py(r), t: 0, d: 0.4, rad: cs * 0.7, col: '#a6ffc4' });
@@ -148,6 +156,7 @@ class BoardView {
         break;
       }
       case 'shuffle': {
+        Sound.special('shuffle');
         for (const [, v] of this.vis) {
           v.x += U.rf(-3, 3); v.y += U.rf(-3, 3); v.vy = 0; v.mode = null; v.spin = U.rf(-6, 6);
         }
@@ -227,6 +236,7 @@ class BoardView {
       this.onMove = null;
       f([r1, c1, r2, c2]);
     } else {
+      Sound.bad();
       for (const [r, c] of [[r1, c1], [r2, c2]]) {
         const x = b.at(r, c), v = x && this.vis.get(x.id);
         if (v) v.wig = 1;

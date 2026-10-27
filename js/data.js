@@ -62,6 +62,7 @@ const EFFECTS = {
   slow:     { name: 'Замедление', icon: '⌛', d: e => `−${e.v}% уклонения цели на ${e.t} хода` },
   scramble: { name: 'Дезориентация', icon: '↻', d: () => 'перемешивает поле цели' },
   drain:    { name: 'Перехват', icon: '⇋', d: e => `крадёт ${e.v} данных` },
+  hacked:   { name: 'Сбой систем', icon: '⌁', d: e => `−${e.v}% точности и уклонения до конца следующего хода` },
 };
 
 // Производители — у каждого свой стиль
@@ -69,23 +70,23 @@ const MAKERS = [
   { id: 'terra', name: 'Терра-Тек', code: 'ТТ', color: '#8ecae6',
     desc: 'Надёжная классика. Сбалансированные характеристики.',
     w: { dmg: 1, acc: 0, crit: 0, range: 0, cap: 1, eff: 0, mass: 1, price: 1 },
-    hull: { hp: 1, armor: 0, cap: 1, ev: 0, init: 0, price: 1, bias: [1, 1, 1.2, 1.2, 1, 1] } },
+    hull: { hp: 1, armor: 0, cap: 1, ev: 0, init: 0, turn: 0, price: 1, bias: [1, 1, 1.2, 1.2, 1, 1] } },
   { id: 'kron', name: 'Кронская Кузня', code: 'КК', color: '#e76f51',
     desc: 'Тяжёлое и грубое. Больше урона и прочности, но массивнее и менее точно.',
     w: { dmg: 1.2, acc: -6, crit: 0, range: 0, cap: 1, eff: 0, mass: 1.2, price: 1.05 },
-    hull: { hp: 1.22, armor: 0.04, cap: 1.05, ev: -3, init: -1, price: 1.1, bias: [1, 1.45, 1, 1.1, 0.8, 0.9] } },
+    hull: { hp: 1.22, armor: 0.04, cap: 1.05, ev: -3, init: -1, turn: -4, price: 1.1, bias: [1, 1.45, 1, 1.1, 0.8, 0.9] } },
   { id: 'veil', name: 'Вейл Оптикс', code: 'ВО', color: '#90e0ef',
     desc: 'Прецизионная оптика. Точность, криты и дальность.',
     w: { dmg: 0.93, acc: 8, crit: 5, range: 2, cap: 1, eff: 0, mass: 0.9, price: 1.2 },
-    hull: { hp: 0.9, armor: -0.01, cap: 0.95, ev: 3, init: 2, price: 1.15, bias: [1.1, 0.85, 1, 0.9, 1.1, 1.5] } },
+    hull: { hp: 0.9, armor: -0.01, cap: 0.95, ev: 3, init: 2, turn: 6, price: 1.15, bias: [1.1, 0.85, 1, 0.9, 1.1, 1.5] } },
   { id: 'zot', name: 'Зот-Рой', code: 'ЗР', color: '#b5e48c',
     desc: 'Дёшево и массово. Большая вместимость и шанс эффектов, слабее урон.',
     w: { dmg: 0.87, acc: 0, crit: 0, range: 0, cap: 1.4, eff: 0.12, mass: 0.88, price: 0.75 },
-    hull: { hp: 0.95, armor: 0, cap: 1.15, ev: 1, init: 1, price: 0.8, bias: [0.9, 1.1, 0.9, 1, 1.5, 0.9] } },
+    hull: { hp: 0.95, armor: 0, cap: 1.15, ev: 1, init: 1, turn: 4, price: 0.8, bias: [0.9, 1.1, 0.9, 1, 1.5, 0.9] } },
   { id: 'aether', name: 'Эфирий', code: 'ЭФ', color: '#c77dff',
     desc: 'Экзотические технологии древних. Мощно, легко и очень дорого.',
     w: { dmg: 1.1, acc: 2, crit: 4, range: 0, cap: 1.1, eff: 0.08, mass: 0.82, price: 1.6 },
-    hull: { hp: 0.95, armor: 0, cap: 1, ev: 1, init: 1, price: 1.5, shield: 30, bias: [1.5, 0.8, 1.3, 1, 1, 1.1] } },
+    hull: { hp: 0.95, armor: 0, cap: 1, ev: 1, init: 1, turn: 3, price: 1.5, shield: 30, bias: [1.5, 0.8, 1.3, 1, 1, 1.1] } },
 ];
 const MAKER = Object.fromEntries(MAKERS.map(m => [m.id, m]));
 
@@ -110,25 +111,25 @@ const SLOT_ORDER = Object.keys(SLOT_TYPES);
 //  rof — залпов за ход, shots — снарядов в залпе
 // ------------------------------------------------------------
 const WEAPON_T = [
-  { sub: 'laser', name: 'Импульсный лазер', fx: 'beam', dt: 'energy', res: 'energy', d: [9, 13], shots: 1, range: 12, acc: 84, crit: 6, cost: 5, cap: 10, rof: 2, mass: 7, p: 1 },
-  { sub: 'hlaser', name: 'Лучевая пушка', fx: 'bigbeam', dt: 'energy', res: 'energy', d: [22, 30], shots: 1, range: 14, acc: 80, crit: 8, cost: 10, cap: 20, rof: 1, mass: 13, p: 1.4, eff: [{ k: 'shred', ch: 1, v: 0.25 }] },
-  { sub: 'blaster', name: 'Бластер', fx: 'bolt', dt: 'energy', res: 'energy', d: [5, 7], shots: 3, range: 8, acc: 74, crit: 5, cost: 6, cap: 12, rof: 2, mass: 6, p: 0.9 },
-  { sub: 'plasma', name: 'Плазменная пушка', fx: 'plasma', dt: 'plasma', res: 'energy', d: [18, 26], shots: 1, range: 9, acc: 72, crit: 8, cost: 9, cap: 18, rof: 1, mass: 12, p: 1.3, eff: [{ k: 'burn', ch: 0.35, v: 4, t: 3 }] },
-  { sub: 'torch', name: 'Плазменный факел', fx: 'flame', dt: 'plasma', res: 'energy', d: [30, 40], shots: 1, range: 6, acc: 88, crit: 5, cost: 10, cap: 20, rof: 1, mass: 14, p: 1.3, eff: [{ k: 'burn', ch: 0.6, v: 6, t: 3 }] },
-  { sub: 'ion', name: 'Ионный излучатель', fx: 'arc', dt: 'ion', res: 'energy', d: [11, 15], shots: 1, range: 10, acc: 82, crit: 4, cost: 7, cap: 14, rof: 1, mass: 9, p: 1.1, eff: [{ k: 'freeze', ch: 0.45, v: 2 }] },
-  { sub: 'emp', name: 'ЭМИ-проектор', fx: 'wave', dt: 'ion', res: 'energy', d: [7, 10], shots: 1, range: 8, acc: 90, crit: 2, cost: 6, cap: 12, rof: 1, mass: 8, p: 1.1, eff: [{ k: 'emp', ch: 0.7, v: 6 }, { k: 'stun', ch: 0.07 }] },
-  { sub: 'autocannon', name: 'Автопушка', fx: 'tracer', dt: 'kinetic', res: 'ammo', d: [4, 6], shots: 4, range: 10, acc: 72, crit: 5, cost: 4, cap: 12, rof: 2, mass: 8, p: 1 },
-  { sub: 'rail', name: 'Рельсотрон', fx: 'rail', dt: 'kinetic', res: 'ammo', d: [26, 34], shots: 1, range: 20, acc: 86, crit: 12, cost: 8, cap: 16, rof: 1, mass: 15, p: 1.5, pierce: 0.4, minT: 2 },
-  { sub: 'flak', name: 'Осколочная пушка', fx: 'flak', dt: 'kinetic', res: 'ammo', d: [3, 5], shots: 7, range: 7, acc: 68, crit: 3, cost: 5, cap: 10, rof: 1, mass: 9, p: 1, eff: [{ k: 'jam', ch: 0.3, v: 2 }] },
-  { sub: 'massdriver', name: 'Масс-драйвер', fx: 'slug', dt: 'kinetic', res: 'ammo', d: [16, 22], shots: 1, range: 16, acc: 78, crit: 7, cost: 6, cap: 12, rof: 1, mass: 12, p: 1.2, armorPen: 0.1, eff: [{ k: 'push', ch: 0.5, v: 2 }] },
-  { sub: 'missile', name: 'Ракетная установка', fx: 'missile', dt: 'explosive', res: 'ammo', d: [13, 17], shots: 2, range: 20, acc: 90, crit: 6, cost: 7, cap: 14, rof: 1, mass: 11, p: 1.3, homing: true },
-  { sub: 'torpedo', name: 'Торпедный аппарат', fx: 'torpedo', dt: 'explosive', res: 'ammo', d: [44, 58], shots: 1, range: 15, acc: 64, crit: 10, cost: 12, cap: 24, rof: 1, mass: 18, p: 1.6, minT: 2, eff: [{ k: 'mine', ch: 0.35, v: 1 }] },
-  { sub: 'swarm', name: 'Рой микроракет', fx: 'swarm', dt: 'explosive', res: 'ammo', d: [3, 5], shots: 6, range: 14, acc: 82, crit: 4, cost: 6, cap: 12, rof: 1, mass: 10, p: 1.2, homing: true, eff: [{ k: 'scramble', ch: 0.06 }] },
-  { sub: 'grav', name: 'Гравитационный резак', fx: 'grav', dt: 'gravity', res: 'energy', d: [15, 21], shots: 1, range: 7, acc: 82, crit: 6, cost: 9, cap: 18, rof: 1, mass: 14, p: 1.4, minT: 2, eff: [{ k: 'pull', ch: 0.6, v: 2 }, { k: 'slow', ch: 0.4, v: 10, t: 2 }] },
-  { sub: 'nano', name: 'Нанитовый проектор', fx: 'nano', dt: 'nano', res: 'data', d: [9, 13], shots: 1, range: 11, acc: 86, crit: 5, cost: 4, cap: 12, rof: 2, mass: 8, p: 1.3, minT: 2, eff: [{ k: 'corrode', ch: 0.5, v: 0.1, t: 3 }, { k: 'virus', ch: 0.35, v: 1 }] },
-  { sub: 'drain', name: 'Вампирический луч', fx: 'drain', dt: 'energy', res: 'energy', d: [10, 14], shots: 1, range: 9, acc: 84, crit: 5, cost: 7, cap: 14, rof: 1, mass: 10, p: 1.4, minT: 3, eff: [{ k: 'leech', ch: 1, v: 0.4 }] },
-  { sub: 'quake', name: 'Деструктор поля', fx: 'quake', dt: 'gravity', res: 'data', d: [7, 9], shots: 1, range: 12, acc: 84, crit: 3, cost: 5, cap: 10, rof: 1, mass: 9, p: 1.4, minT: 3, eff: [{ k: 'jam', ch: 0.55, v: 3 }, { k: 'scramble', ch: 0.25 }, { k: 'drain', ch: 0.5, v: 3 }] },
-  { sub: 'anti', name: 'Аннигилятор', fx: 'anti', dt: 'plasma', res: 'energy', d: [44, 62], shots: 1, range: 12, acc: 78, crit: 14, cost: 16, cap: 32, rof: 1, mass: 20, p: 2.2, minT: 4, pierce: 0.3, eff: [{ k: 'burn', ch: 0.5, v: 8, t: 2 }] },
+  { sub: 'laser', name: 'Импульсный лазер', arc: 70, fx: 'beam', dt: 'energy', res: 'energy', d: [9, 13], shots: 1, range: 12, acc: 84, crit: 6, cost: 5, cap: 10, rof: 2, mass: 7, p: 1 },
+  { sub: 'hlaser', name: 'Лучевая пушка', arc: 30, fx: 'bigbeam', dt: 'energy', res: 'energy', d: [22, 30], shots: 1, range: 14, acc: 80, crit: 8, cost: 10, cap: 20, rof: 1, mass: 13, p: 1.4, eff: [{ k: 'shred', ch: 1, v: 0.25 }] },
+  { sub: 'blaster', name: 'Бластер', arc: 70, fx: 'bolt', dt: 'energy', res: 'energy', d: [5, 7], shots: 3, range: 8, acc: 74, crit: 5, cost: 6, cap: 12, rof: 2, mass: 6, p: 0.9 },
+  { sub: 'plasma', name: 'Плазменная пушка', arc: 70, fx: 'plasma', dt: 'plasma', res: 'energy', d: [18, 26], shots: 1, range: 9, acc: 72, crit: 8, cost: 9, cap: 18, rof: 1, mass: 12, p: 1.3, eff: [{ k: 'burn', ch: 0.35, v: 4, t: 3 }] },
+  { sub: 'torch', name: 'Плазменный факел', arc: 30, fx: 'flame', dt: 'plasma', res: 'energy', d: [30, 40], shots: 1, range: 6, acc: 88, crit: 5, cost: 10, cap: 20, rof: 1, mass: 14, p: 1.3, eff: [{ k: 'burn', ch: 0.6, v: 6, t: 3 }] },
+  { sub: 'ion', name: 'Ионный излучатель', arc: 70, fx: 'arc', dt: 'ion', res: 'energy', d: [11, 15], shots: 1, range: 10, acc: 82, crit: 4, cost: 7, cap: 14, rof: 1, mass: 9, p: 1.1, eff: [{ k: 'freeze', ch: 0.45, v: 2 }] },
+  { sub: 'emp', name: 'ЭМИ-проектор', arc: 70, fx: 'wave', dt: 'ion', res: 'energy', d: [7, 10], shots: 1, range: 8, acc: 90, crit: 2, cost: 6, cap: 12, rof: 1, mass: 8, p: 1.1, eff: [{ k: 'emp', ch: 0.7, v: 6 }, { k: 'stun', ch: 0.07 }] },
+  { sub: 'autocannon', name: 'Автопушка', arc: 70, fx: 'tracer', dt: 'kinetic', res: 'ammo', d: [4, 6], shots: 4, range: 10, acc: 72, crit: 5, cost: 4, cap: 12, rof: 2, mass: 8, p: 1 },
+  { sub: 'rail', name: 'Рельсотрон', arc: 30, fx: 'rail', dt: 'kinetic', res: 'ammo', d: [26, 34], shots: 1, range: 20, acc: 86, crit: 12, cost: 8, cap: 16, rof: 1, mass: 15, p: 1.5, pierce: 0.4, minT: 2 },
+  { sub: 'flak', name: 'Осколочная пушка', arc: 70, fx: 'flak', dt: 'kinetic', res: 'ammo', d: [3, 5], shots: 7, range: 7, acc: 68, crit: 3, cost: 5, cap: 10, rof: 1, mass: 9, p: 1, eff: [{ k: 'jam', ch: 0.3, v: 2 }] },
+  { sub: 'massdriver', name: 'Масс-драйвер', arc: 30, fx: 'slug', dt: 'kinetic', res: 'ammo', d: [16, 22], shots: 1, range: 16, acc: 78, crit: 7, cost: 6, cap: 12, rof: 1, mass: 12, p: 1.2, armorPen: 0.1, eff: [{ k: 'push', ch: 0.5, v: 2 }] },
+  { sub: 'missile', name: 'Ракетная установка', arc: 180, fx: 'missile', dt: 'explosive', res: 'ammo', d: [13, 17], shots: 2, range: 20, acc: 90, crit: 6, cost: 7, cap: 14, rof: 1, mass: 11, p: 1.3, homing: true },
+  { sub: 'torpedo', name: 'Торпедный аппарат', arc: 180, fx: 'torpedo', dt: 'explosive', res: 'ammo', d: [44, 58], shots: 1, range: 15, acc: 64, crit: 10, cost: 12, cap: 24, rof: 1, mass: 18, p: 1.6, minT: 2, eff: [{ k: 'mine', ch: 0.35, v: 1 }] },
+  { sub: 'swarm', name: 'Рой микроракет', arc: 180, fx: 'swarm', dt: 'explosive', res: 'ammo', d: [3, 5], shots: 6, range: 14, acc: 82, crit: 4, cost: 6, cap: 12, rof: 1, mass: 10, p: 1.2, homing: true, eff: [{ k: 'scramble', ch: 0.06 }] },
+  { sub: 'grav', name: 'Гравитационный резак', arc: 70, fx: 'grav', dt: 'gravity', res: 'energy', d: [15, 21], shots: 1, range: 7, acc: 82, crit: 6, cost: 9, cap: 18, rof: 1, mass: 14, p: 1.4, minT: 2, eff: [{ k: 'pull', ch: 0.6, v: 2 }, { k: 'slow', ch: 0.4, v: 10, t: 2 }] },
+  { sub: 'nano', name: 'Нанитовый проектор', arc: 70, fx: 'nano', dt: 'nano', res: 'data', d: [9, 13], shots: 1, range: 11, acc: 86, crit: 5, cost: 4, cap: 12, rof: 2, mass: 8, p: 1.3, minT: 2, eff: [{ k: 'corrode', ch: 0.5, v: 0.1, t: 3 }, { k: 'virus', ch: 0.35, v: 1 }] },
+  { sub: 'drain', name: 'Вампирический луч', arc: 70, fx: 'drain', dt: 'energy', res: 'energy', d: [10, 14], shots: 1, range: 9, acc: 84, crit: 5, cost: 7, cap: 14, rof: 1, mass: 10, p: 1.4, minT: 3, eff: [{ k: 'leech', ch: 1, v: 0.4 }] },
+  { sub: 'quake', name: 'Деструктор поля', arc: 70, fx: 'quake', dt: 'gravity', res: 'data', d: [7, 9], shots: 1, range: 12, acc: 84, crit: 3, cost: 5, cap: 10, rof: 1, mass: 9, p: 1.4, minT: 3, eff: [{ k: 'jam', ch: 0.55, v: 3 }, { k: 'scramble', ch: 0.25 }, { k: 'drain', ch: 0.5, v: 3 }] },
+  { sub: 'anti', name: 'Аннигилятор', arc: 30, fx: 'anti', dt: 'plasma', res: 'energy', d: [44, 62], shots: 1, range: 12, acc: 78, crit: 14, cost: 16, cap: 32, rof: 1, mass: 20, p: 2.2, minT: 4, pierce: 0.3, eff: [{ k: 'burn', ch: 0.5, v: 8, t: 2 }] },
 ];
 
 const SHIELD_T = [
@@ -142,11 +143,11 @@ const SHIELD_T = [
 ];
 
 const ENGINE_T = [
-  { sub: 'chem', name: 'Химический двигатель', thrust: 1.0, evade: 2, init: 0, ev: 0, mass: 6, p: 0.8 },
-  { sub: 'ion', name: 'Ионный двигатель', thrust: 1.15, evade: 3, init: 2, ev: 2, mass: 8, p: 1 },
-  { sub: 'plasma', name: 'Плазменный двигатель', thrust: 1.5, evade: 2.5, init: 1, ev: 1, mass: 10, p: 1.1 },
-  { sub: 'warp', name: 'Варп-ускоритель', thrust: 1.3, evade: 4, init: 4, ev: 3, mass: 12, p: 1.3, minT: 2 },
-  { sub: 'grav', name: 'Гравитационный привод', thrust: 2.0, evade: 3.5, init: 3, ev: 4, mass: 14, p: 1.5, minT: 3 },
+  { sub: 'chem', name: 'Химический двигатель', turn: 3, thrust: 1.0, evade: 2, init: 0, ev: 0, mass: 8, p: 0.8 },
+  { sub: 'ion', name: 'Ионный двигатель', turn: 6, thrust: 1.15, evade: 3, init: 2, ev: 2, mass: 10, p: 1 },
+  { sub: 'plasma', name: 'Плазменный двигатель', turn: 5, thrust: 1.5, evade: 2.5, init: 1, ev: 1, mass: 12, p: 1.1 },
+  { sub: 'warp', name: 'Варп-ускоритель', turn: 9, thrust: 1.3, evade: 4, init: 4, ev: 3, mass: 14, p: 1.3, minT: 2 },
+  { sub: 'grav', name: 'Гравитационный привод', turn: 12, thrust: 2.0, evade: 3.5, init: 3, ev: 4, mass: 16, p: 1.5, minT: 3 },
 ];
 
 const REACTOR_T = [
@@ -158,47 +159,47 @@ const REACTOR_T = [
 ];
 
 const ARSENAL_T = [
-  { sub: 'mag', name: 'Оружейный склад', aPer: 3.2, aCap: 22, aPass: 0, critStar: 0, mass: 7, p: 1 },
-  { sub: 'auto', name: 'Автозагрузчик', aPer: 4.2, aCap: 14, aPass: 0, critStar: 0, mass: 9, p: 1.1 },
-  { sub: 'fab', name: 'Нанофабрика боеприпасов', aPer: 3, aCap: 16, aPass: 3, critStar: 0, mass: 10, p: 1.25, minT: 2 },
-  { sub: 'ap', name: 'Бронебойный арсенал', aPer: 3.2, aCap: 18, aPass: 0, critStar: 0.04, mass: 9, p: 1.25, minT: 2 },
+  { sub: 'mag', name: 'Оружейный склад', aPer: 3.2, aCap: 22, aPass: 0, critStar: 0, mass: 8, p: 1 },
+  { sub: 'auto', name: 'Автозагрузчик', aPer: 4.2, aCap: 14, aPass: 0, critStar: 0, mass: 10, p: 1.1 },
+  { sub: 'fab', name: 'Нанофабрика боеприпасов', aPer: 3, aCap: 16, aPass: 3, critStar: 0, mass: 11, p: 1.25, minT: 2 },
+  { sub: 'ap', name: 'Бронебойный арсенал', aPer: 3.2, aCap: 18, aPass: 0, critStar: 0.04, mass: 10, p: 1.25, minT: 2 },
 ];
 
 const DROID_T = [
-  { sub: 'basic', name: 'Ремонтный дроид', rPer: 6, rPass: 2, cleanse: 0, mass: 6, p: 1 },
-  { sub: 'field', name: 'Полевая мастерская', rPer: 10, rPass: 0, cleanse: 0, mass: 12, p: 1.2 },
-  { sub: 'swarm', name: 'Нанитовый рой', rPer: 5, rPass: 5, cleanse: 1, mass: 8, p: 1.3, minT: 2 },
-  { sub: 'purge', name: 'Дроид-чистильщик', rPer: 4, rPass: 1, cleanse: 2, mass: 7, p: 1.15, minT: 2 },
+  { sub: 'basic', name: 'Ремонтный дроид', rPer: 15, rPass: 9, cleanse: 0, mass: 5, p: 1 },
+  { sub: 'field', name: 'Полевая мастерская', rPer: 25, rPass: 3, cleanse: 0, mass: 10, p: 1.2 },
+  { sub: 'swarm', name: 'Нанитовый рой', rPer: 12, rPass: 15, cleanse: 1, mass: 7, p: 1.3, minT: 2 },
+  { sub: 'purge', name: 'Дроид-чистильщик', rPer: 11, rPass: 7, cleanse: 2, mass: 6, p: 1.15, minT: 2 },
 ];
 
 const COMPUTER_T = [
-  { sub: 'tgt', name: 'Прицельный компьютер', acc: 6, crit: 3, dPer: 1.5, mass: 4, p: 1 },
-  { sub: 'tac', name: 'Тактический ИИ', acc: 4, crit: 4, dPer: 2.5, mass: 6, p: 1.1 },
-  { sub: 'ball', name: 'Баллистический вычислитель', acc: 11, crit: 6, dPer: 1.2, mass: 7, p: 1.25, minT: 2 },
-  { sub: 'quant', name: 'Квантовый процессор', acc: 7, crit: 9, dPer: 3, mass: 8, p: 1.6, minT: 3 },
+  { sub: 'tgt', name: 'Прицельный компьютер', acc: 6, crit: 3, dPer: 1.5, mass: 6, p: 1 },
+  { sub: 'tac', name: 'Тактический ИИ', acc: 4, crit: 4, dPer: 2.5, mass: 8, p: 1.1 },
+  { sub: 'ball', name: 'Баллистический вычислитель', acc: 11, crit: 6, dPer: 1.2, mass: 9, p: 1.25, minT: 2 },
+  { sub: 'quant', name: 'Квантовый процессор', acc: 7, crit: 9, dPer: 3, mass: 10, p: 1.6, minT: 3 },
 ];
 
 const RADAR_T = [
-  { sub: 'std', name: 'Радар', range: 1, acc: 2, ev: 0, mass: 3, p: 1 },
-  { sub: 'long', name: 'Радар дальнего обзора', range: 3, acc: 1, ev: 0, mass: 6, p: 1.2 },
-  { sub: 'pulse', name: 'Импульсный сканер', range: 2, acc: 4, ev: 2, mass: 5, p: 1.3, minT: 2 },
+  { sub: 'std', name: 'Радар', range: 2, acc: 4, ev: 0, mass: 4, p: 1 },
+  { sub: 'long', name: 'Радар дальнего обзора', range: 5, acc: 2, ev: 0, mass: 8, p: 1.2 },
+  { sub: 'pulse', name: 'Импульсный сканер', range: 3, acc: 6, ev: 3, mass: 7, p: 1.3, minT: 2 },
 ];
 
 const EW_T = [
-  { sub: 'jam', name: 'Постановщик помех', kind: 'jam', cost: 8, power: 3, ewRes: 0.1, mass: 6, p: 1 },
-  { sub: 'cryo', name: 'Ионный глушитель', kind: 'freeze', cost: 9, power: 3, ewRes: 0.1, mass: 7, p: 1.1 },
-  { sub: 'siphon', name: 'Сифон ресурсов', kind: 'siphon', cost: 6, power: 5, ewRes: 0.05, mass: 6, p: 1.05 },
-  { sub: 'virus', name: 'Вирусная платформа', kind: 'virus', cost: 10, power: 2, ewRes: 0.1, mass: 7, p: 1.25, minT: 2 },
-  { sub: 'mine', name: 'Минный проектор', kind: 'mine', cost: 12, power: 2, ewRes: 0.05, mass: 8, p: 1.3, minT: 2 },
-  { sub: 'wall', name: 'Брандмауэр', kind: null, cost: 0, power: 0, ewRes: 0.45, mass: 4, p: 1.1 },
+  { sub: 'jam', name: 'Постановщик помех', kind: 'jam', cost: 6, power: 5, ewRes: 0.1, mass: 6, p: 1 },
+  { sub: 'cryo', name: 'Ионный глушитель', kind: 'freeze', cost: 7, power: 4, ewRes: 0.1, mass: 7, p: 1.1 },
+  { sub: 'siphon', name: 'Сифон ресурсов', kind: 'siphon', cost: 5, power: 8, ewRes: 0.05, mass: 6, p: 1.05 },
+  { sub: 'virus', name: 'Вирусная платформа', kind: 'virus', cost: 8, power: 3, ewRes: 0.1, mass: 7, p: 1.25, minT: 2 },
+  { sub: 'mine', name: 'Минный проектор', kind: 'mine', cost: 9, power: 2, ewRes: 0.05, mass: 8, p: 1.3, minT: 2 },
+  { sub: 'wall', name: 'Брандмауэр', kind: null, cost: 0, power: 0, ewRes: 0.55, dPass: 2, mass: 4, p: 1.1 },
 ];
 
 const ARMOR_T = [
-  { sub: 'steel', name: 'Стальная бронеплита', hp: 40, armor: 0.03, resist: {}, ev: -1, mass: 12, p: 0.8 },
-  { sub: 'comp', name: 'Композитная броня', hp: 30, armor: 0.05, resist: {}, ev: -0.5, mass: 9, p: 1 },
-  { sub: 'ablat', name: 'Абляционная броня', hp: 25, armor: 0.02, resist: { energy: 0.15, plasma: 0.2 }, ev: 0, mass: 8, p: 1.1 },
-  { sub: 'react', name: 'Реактивная броня', hp: 25, armor: 0.02, resist: { explosive: 0.25, kinetic: 0.15 }, ev: 0, mass: 9, p: 1.1 },
-  { sub: 'neutr', name: 'Нейтрониевая плита', hp: 70, armor: 0.06, resist: {}, ev: -2, mass: 18, p: 1.4, minT: 3 },
+  { sub: 'steel', name: 'Стальная бронеплита', hp: 105, armor: 0.045, resist: {}, ev: -1, mass: 9, p: 0.8 },
+  { sub: 'comp', name: 'Композитная броня', hp: 80, armor: 0.075, resist: {}, ev: -0.5, mass: 7, p: 1 },
+  { sub: 'ablat', name: 'Абляционная броня', hp: 72, armor: 0.03, resist: { energy: 0.15, plasma: 0.2 }, ev: 0, mass: 6, p: 1.1 },
+  { sub: 'react', name: 'Реактивная броня', hp: 72, armor: 0.03, resist: { explosive: 0.25, kinetic: 0.15 }, ev: 0, mass: 7, p: 1.1 },
+  { sub: 'neutr', name: 'Нейтрониевая плита', hp: 185, armor: 0.09, resist: {}, ev: -2, mass: 14, p: 1.4, minT: 3 },
 ];
 
 const ARTIFACTS = [
@@ -228,23 +229,23 @@ const ARTIFACTS = [
 //  Корпуса
 // ------------------------------------------------------------
 const HULL_CLASSES = [
-  { cls: 'scout', name: 'Разведчик', hp: 125, armor: 0.04, cap: 50, ev: 18, init: 14, size: 0.62, minT: 1, p: 0.6,
+  { cls: 'scout', turn: 22, name: 'Разведчик', hp: 125, armor: 0.04, cap: 50, ev: 18, init: 14, size: 0.62, minT: 1, p: 0.6,
     slots: { weapon: 2, shield: 1, engine: 1, reactor: 1, arsenal: 1, droid: 0, computer: 1, radar: 1, ew: 1, armor: 0, artifact: 1 } },
-  { cls: 'fighter', name: 'Истребитель', hp: 165, armor: 0.06, cap: 64, ev: 15, init: 13, size: 0.7, minT: 1, p: 0.75,
+  { cls: 'fighter', turn: 19, name: 'Истребитель', hp: 165, armor: 0.06, cap: 64, ev: 15, init: 13, size: 0.7, minT: 1, p: 0.75,
     slots: { weapon: 3, shield: 1, engine: 1, reactor: 1, arsenal: 1, droid: 0, computer: 1, radar: 0, ew: 0, armor: 1, artifact: 1 } },
-  { cls: 'corvette', name: 'Корвет', hp: 230, armor: 0.08, cap: 84, ev: 11, init: 11, size: 0.8, minT: 1, p: 1,
+  { cls: 'corvette', turn: 15, name: 'Корвет', hp: 230, armor: 0.08, cap: 84, ev: 11, init: 11, size: 0.8, minT: 1, p: 1,
     slots: { weapon: 3, shield: 1, engine: 1, reactor: 1, arsenal: 1, droid: 1, computer: 1, radar: 1, ew: 0, armor: 1, artifact: 1 } },
-  { cls: 'raider', name: 'Рейдер', hp: 205, armor: 0.06, cap: 90, ev: 13, init: 12, size: 0.82, minT: 2, p: 1.25,
+  { cls: 'raider', turn: 17, name: 'Рейдер', hp: 205, armor: 0.06, cap: 90, ev: 13, init: 12, size: 0.82, minT: 2, p: 1.25,
     slots: { weapon: 3, shield: 1, engine: 1, reactor: 1, arsenal: 1, droid: 0, computer: 1, radar: 1, ew: 1, armor: 0, artifact: 3 } },
-  { cls: 'frigate', name: 'Фрегат', hp: 300, armor: 0.1, cap: 108, ev: 8, init: 9, size: 0.95, minT: 2, p: 1.4,
+  { cls: 'frigate', turn: 12, name: 'Фрегат', hp: 300, armor: 0.1, cap: 108, ev: 8, init: 9, size: 0.95, minT: 2, p: 1.4,
     slots: { weapon: 4, shield: 1, engine: 1, reactor: 1, arsenal: 1, droid: 1, computer: 1, radar: 1, ew: 1, armor: 1, artifact: 1 } },
-  { cls: 'destroyer', name: 'Эсминец', hp: 390, armor: 0.12, cap: 135, ev: 6, init: 8, size: 1.05, minT: 3, p: 1.8,
+  { cls: 'destroyer', turn: 9, name: 'Эсминец', hp: 390, armor: 0.12, cap: 135, ev: 6, init: 8, size: 1.05, minT: 3, p: 1.8,
     slots: { weapon: 4, shield: 1, engine: 1, reactor: 1, arsenal: 1, droid: 1, computer: 1, radar: 1, ew: 1, armor: 2, artifact: 2 } },
-  { cls: 'cruiser', name: 'Крейсер', hp: 500, armor: 0.15, cap: 170, ev: 4, init: 7, size: 1.18, minT: 3, p: 2.3,
+  { cls: 'cruiser', turn: 7, name: 'Крейсер', hp: 500, armor: 0.15, cap: 170, ev: 4, init: 7, size: 1.18, minT: 3, p: 2.3,
     slots: { weapon: 5, shield: 1, engine: 1, reactor: 1, arsenal: 1, droid: 1, computer: 1, radar: 1, ew: 1, armor: 2, artifact: 2 } },
-  { cls: 'battleship', name: 'Линкор', hp: 660, armor: 0.18, cap: 215, ev: 2, init: 5, size: 1.32, minT: 4, p: 3,
+  { cls: 'battleship', turn: 5, name: 'Линкор', hp: 660, armor: 0.18, cap: 215, ev: 2, init: 5, size: 1.32, minT: 4, p: 3,
     slots: { weapon: 6, shield: 1, engine: 1, reactor: 1, arsenal: 1, droid: 1, computer: 1, radar: 1, ew: 1, armor: 3, artifact: 2 } },
-  { cls: 'dreadnought', name: 'Дредноут', hp: 860, armor: 0.22, cap: 270, ev: 0, init: 4, size: 1.48, minT: 5, p: 4,
+  { cls: 'dreadnought', turn: 4, name: 'Дредноут', hp: 860, armor: 0.22, cap: 270, ev: 0, init: 4, size: 1.48, minT: 5, p: 4,
     slots: { weapon: 7, shield: 1, engine: 1, reactor: 1, arsenal: 1, droid: 1, computer: 1, radar: 1, ew: 1, armor: 3, artifact: 3 } },
 ];
 const HULL_CLASS = Object.fromEntries(HULL_CLASSES.map((c, i) => [c.cls, Object.assign(c, { idx: i })]));
@@ -289,7 +290,7 @@ const HULL_LIST = [];
         const it = {
           id: `weapon_${T.sub}_${m.id}_${t}`, cat: 'weapon', sub: T.sub, tpl: T, maker: m.id, tier: t,
           name: `${T.name} ${code(m, ti, t)}`, base: T.name,
-          fx: T.fx, dt: T.dt, res: T.res,
+          fx: T.fx, dt: T.dt, res: T.res, arc: T.arc,
           dmin: Math.round(T.d[0] * k * mw.dmg), dmax: Math.round(T.d[1] * k * mw.dmg),
           shots: T.shots, range: T.range + mw.range + (t >= 4 ? 1 : 0),
           acc: T.acc + mw.acc + 2 * (t - 1), crit: T.crit + mw.crit + (t - 1),
@@ -338,6 +339,7 @@ const HULL_LIST = [];
     thrust: U.r1(T.thrust * (1 + 0.12 * (t - 1)) * mk(m, 1, 0.95, 1.05, 1.15, 1.05)),
     evade: U.r1(T.evade + 0.5 * (t - 1) + mk(m, 0, -0.5, 0.5, 0.5, 0.5)),
     init: T.init + (t - 1) + mk(m, 0, -1, 2, 1, 1),
+    turn: T.turn + 2 * (t - 1) + mk(m, 0, -2, 3, 2, 3),
     ev: T.ev + Math.floor((t - 1) / 2) + mk(m, 0, -1, 1, 0, 1),
     mass: Math.max(3, Math.round(mm(m, T.mass) * (1 - 0.04 * (t - 1)))),
   }));
@@ -378,6 +380,7 @@ const HULL_LIST = [];
     cost: T.cost ? Math.max(4, T.cost - Math.floor((t - 1) / 2) - (m.id === 'aether' ? 1 : 0)) : 0,
     power: T.power ? T.power + Math.floor((t - 1) / 2) + (m.id === 'zot' ? 1 : 0) : 0,
     ewRes: U.r1((T.ewRes + 0.03 * (t - 1)) * 100) / 100,
+    dPass: T.dPass ? T.dPass + Math.floor((t - 1) / 2) : 0,
     mass: Math.max(2, Math.round(mm(m, T.mass) * (1 - 0.04 * (t - 1)))),
   }));
   genGeneric('armor', ARMOR_T, (T, t, m) => ({
@@ -401,7 +404,7 @@ const HULL_LIST = [];
         id: `hull_${C.cls}_${m.id}`, cls: C.cls, clsName: C.name, maker: m.id, tier: C.minT,
         name: `${C.name} «${HULL_MODELS[m.id][C.idx]}»`, model: HULL_MODELS[m.id][C.idx],
         hp: Math.round(C.hp * mh.hp * 0.85 / 5) * 5, armor: Math.max(0, U.r1((C.armor + mh.armor) * 100) / 100),
-        cap: Math.round(C.cap * mh.cap), ev: Math.max(0, C.ev + mh.ev), init: C.init + mh.init,
+        cap: Math.round(C.cap * mh.cap), ev: Math.max(0, C.ev + mh.ev), init: C.init + mh.init, turn: C.turn + mh.turn,
         shield: mh.shield || 0, size: C.size, slots: Object.assign({}, C.slots),
         bias: mh.bias.slice(), resist: m.id === 'kron' ? { kinetic: 0.08 } : m.id === 'aether' ? { energy: 0.1 } : {},
         price: Math.round(400 * C.p * mh.price / 10) * 10,

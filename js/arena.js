@@ -36,7 +36,7 @@ class Arena {
     const x = (e.clientX - b.left) * this.dpr, y = (e.clientY - b.top) * this.dpr;
     for (const V of this.vis.values()) {
       if (!V.ship.alive) continue;
-      if (Math.abs(x - V.x) < V.len * 0.55 && Math.abs(y - V.y) < Math.max(V.ht * 0.7, 30 * this.dpr)) return V.ship;
+      if (Math.hypot(x - V.x, y - V.y) < Math.max(V.len * 0.55, 26 * this.dpr)) return V.ship;
     }
     return null;
   }
@@ -46,7 +46,7 @@ class Arena {
     this.vis.clear();
     this.proj = []; this.parts = []; this.texts = []; this.rings = [];
     this.resize(true);
-    for (const V of this.vis.values()) V.x = this.xOf(V.ship.pos) + (V.ship.side ? 1 : -1) * this.cv.width * 0.5;
+    for (const V of this.vis.values()) { V.x = this.sx(V.ship.x) + (V.ship.side ? 1 : -1) * this.cv.width * 0.5; V.ang = V.ship.heading; }
   }
 
   resize(force) {
@@ -90,39 +90,35 @@ class Arena {
 
   layout() {
     if (!this.b) return;
-    const W = this.cv.width, H = this.cv.height;
-    const top = H * 0.1, bot = H * 0.1;
-    for (let side = 0; side < 2; side++) {
-      const ships = this.b.ships.filter(s => s.side === side);
-      const n = ships.length;
-      const lane = (H - top - bot) / Math.max(1, n);
-      ships.forEach((s, i) => {
-        let V = this.vis.get(s.id);
-        const baseLen = Math.min(lane * 1.3, W * 0.16, H * 0.32);
-        const len = Math.round(baseLen * s.hull.size / 4) * 4;
-        const y = top + lane * (i + 0.5) + (side ? lane * 0.12 : -lane * 0.12) * (n > 1 ? 1 : 0);
-        const sprite = GFX.ship(s.hull.id, side, Math.max(24, len));
-        if (!V) {
-          V = { ship: s, x: this.xOf(s.pos), y, flash: 0, shieldFlash: 0, sfx: 0, sfy: 0, dying: -1, alpha: 1, phase: Math.random() * 6,
-            hpShown: s.hp, shShown: s.shield, moving: 0, lastX: 0 };
-          this.vis.set(s.id, V);
-        }
-        V.y = y; V.baseY = y; V.len = len; V.sprite = sprite; V.ht = sprite.meta.ht;
-      });
+    const W = this.cv.width, H = this.cv.height, m = 26 * this.dpr;
+    this.sc = Math.min((W - m * 2) / FIELD_W, (H - m * 2) / FIELD_H);
+    this.ox = (W - FIELD_W * this.sc) / 2;
+    this.oy = (H - FIELD_H * this.sc) / 2;
+    for (const s of this.b.ships) {
+      let V = this.vis.get(s.id);
+      const len = Math.max(24, Math.round(this.sc * 2.25 * s.hull.size / 4) * 4);
+      const sprite = GFX.ship(s.hull.id, s.side, len);
+      if (!V) {
+        V = { ship: s, x: this.sx(s.x), y: this.sy(s.y), ang: s.heading, flash: 0, shieldFlash: 0, sfx: 0, sfy: 0, dying: -1, alpha: 1,
+          phase: Math.random() * 6, hpShown: s.hp, shShown: s.shield, moving: 0 };
+        this.vis.set(s.id, V);
+      }
+      V.len = len; V.sprite = sprite; V.ht = sprite.meta.ht;
     }
-    this.margin = Math.min(W * 0.1, Math.max(...[...this.vis.values()].map(v => v.len)) * 0.62);
   }
+  sx(x) { return this.ox + x * this.sc; }
+  sy(y) { return this.oy + y * this.sc; }
 
-  xOf(pos) {
-    const W = this.cv.width, m = this.margin || W * 0.08;
-    return m + (pos / FIELD_LEN) * (W - m * 2);
+  // перевод точки из системы координат спрайта (нос вправо) в экранную
+  local(V, lx, ly) {
+    const c = Math.cos(V.ang), s = Math.sin(V.ang), f = c < 0 ? -1 : 1;
+    const y2 = ly * f;
+    return [V.x + lx * c - y2 * s, V.y + lx * s + y2 * c];
   }
-
   muzzle(V, wi) {
     const mts = V.sprite.meta.mounts;
     const m = mts.length ? mts[wi % mts.length] : { x: V.len * 0.3, y: 0 };
-    const dir = V.ship.side ? -1 : 1;
-    return [V.x + m.x * dir, V.y + m.y];
+    return this.local(V, m.x, m.y);
   }
 
   // ---------- API для боя ----------
@@ -132,19 +128,21 @@ class Arena {
       if (!A || !T) return resolve();
       const wi = att.weapons.indexOf(w);
       const [x0, y0] = this.muzzle(A, Math.max(0, wi));
-      const dir = Math.sign(T.x - A.x) || 1;
+      const ang = Math.atan2(T.y - A.y, T.x - A.x);
+      const dir = Math.cos(ang) >= 0 ? 1 : -1;
       let x1, y1;
       const shieldUp = tgt.shield > 0;
       if (shot.hit) {
         if (shieldUp) {
-          const a = Math.PI + (dir > 0 ? 0 : Math.PI) + U.rf(-0.7, 0.7);
-          x1 = T.x + Math.cos(a) * T.len * 0.6; y1 = T.y + Math.sin(a) * T.ht * 0.6;
+          const a = ang + Math.PI + U.rf(-0.6, 0.6);
+          x1 = T.x + Math.cos(a) * T.len * 0.55; y1 = T.y + Math.sin(a) * T.len * 0.55;
         } else {
-          x1 = T.x + U.rf(-0.25, 0.25) * T.len; y1 = T.y + U.rf(-0.22, 0.22) * T.ht;
+          x1 = T.x + U.rf(-0.22, 0.22) * T.len; y1 = T.y + U.rf(-0.22, 0.22) * T.len;
         }
       } else {
-        x1 = T.x + dir * T.len * U.rf(0.6, 1.4);
-        y1 = T.y + (Math.random() < 0.5 ? -1 : 1) * T.ht * U.rf(0.7, 1.3);
+        const side = Math.random() < 0.5 ? -1 : 1, over = T.len * U.rf(0.6, 1.4), off = T.len * U.rf(0.6, 1.1) * side;
+        x1 = T.x + Math.cos(ang) * over - Math.sin(ang) * off;
+        y1 = T.y + Math.sin(ang) * over + Math.cos(ang) * off;
       }
       const L = Math.hypot(x1 - x0, y1 - y0);
       const d = this.dpr;
@@ -162,14 +160,15 @@ class Arena {
       };
       this.proj.push(p);
       // вспышка у дула
-      this.muzzleFlash(x0, y0, col, dir, w.fx);
+      this.muzzleFlash(x0, y0, col, ang, w.fx);
+      if (window.Sound) Sound.shot(w.fx);
     });
   }
 
-  muzzleFlash(x, y, col, dir, kind) {
+  muzzleFlash(x, y, col, ang, kind) {
     const n = kind === 'rail' || kind === 'anti' ? 14 : 6;
     for (let i = 0; i < n; i++) {
-      const a = (dir > 0 ? 0 : Math.PI) + U.rf(-0.5, 0.5);
+      const a = ang + U.rf(-0.5, 0.5);
       const s = U.rf(80, 260) * this.dpr;
       this.parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0, max: U.rf(0.08, 0.22), size: U.rf(1, 2.5) * this.dpr, col, add: true, drag: 0.05 });
     }
@@ -183,11 +182,14 @@ class Arena {
     const d = this.dpr;
     const ip = shot.ix != null ? [shot.ix, shot.iy] : [T.x + U.rf(-0.2, 0.2) * T.len, T.y];
     if (!shot.hit && !shot.mine && !shot.reflect) {
+      Sound.hit('miss');
       this.text(T.x, T.y - T.ht * 0.6, shot.phased ? 'ФАЗА' : 'ПРОМАХ', '#9aa7c7', 0.8, 0.8);
       return;
     }
     if (!r) return;
     const total = r.shieldDmg + r.hullDmg;
+    if (r.hullDmg > 0.5) Sound.hit('hull', r.hullDmg > 25 || shot.mine); else if (r.shieldDmg > 0.5) Sound.hit('shield');
+    if (shot.crit) Sound.hit('crit');
     if (r.shieldDmg > 0.5) {
       T.shieldFlash = 1; T.sfx = ip[0] - T.x; T.sfy = ip[1] - T.y;
       this.rings.push({ x: ip[0], y: ip[1], t: 0, d: 0.4, r: 26 * d, col: '#7ab8ff' });
@@ -202,6 +204,7 @@ class Arena {
       this.explosion(ip[0], ip[1], big ? 1.3 : 0.6 + r.hullDmg / 40, w ? DMG[w.dt].color : '#ffb347');
     }
     const cr = shot.crit;
+    if (shot.asp && shot.asp !== 'front' && total > 0.5) this.text(ip[0], ip[1] + 14 * d, `${FLANK[shot.asp].name} ×${FLANK[shot.asp].k}`, shot.asp === 'rear' ? '#ff6b6b' : '#ffe066', 1, 0.7);
     const txt = (cr ? 'КРИТ −' : '−') + Math.round(total);
     const col = cr ? '#ffe066' : r.hullDmg > 0.5 ? '#ff6b6b' : '#7ab8ff';
     this.text(ip[0], ip[1] - 10 * d, txt, col, 1.1, cr ? 1.35 : 0.9 + Math.min(0.4, total / 80));
@@ -236,7 +239,8 @@ class Arena {
     const V = this.vis.get(ship.id);
     if (!V) return Promise.resolve();
     V.moving = 1;
-    return Clock.wait(450);
+    Sound.move();
+    return Clock.wait(380);
   }
 
   ew(att, tgt, kind) {
@@ -245,7 +249,8 @@ class Arena {
       if (!A || !T) return resolve();
       const col = { jam: '#c0c6d0', freeze: '#9be7ff', virus: '#b6ff3b', mine: '#ff4d4d', siphon: '#00f0d0' }[kind] || '#00f0d0';
       this.proj.push({ kind: 'ew', x0: A.x, y0: A.y, x1: T.x, y1: T.y, t: 0, impactAt: 0.55, dur: 0.75, col, resolve, done: false, T, A, shot: { hit: true }, seed: Math.random() * 99 });
-      this.text(A.x, A.y - A.ht * 0.7, '⌁ ВЗЛОМ', col, 1, 0.9);
+      this.text(A.x, A.y - A.len * 0.7, '⌁ ВЗЛОМ', col, 1, 0.9);
+      Sound.hack();
     });
   }
 
@@ -253,6 +258,7 @@ class Arena {
     const T = this.vis.get(tgt.id);
     if (!T) return;
     const E = EFFECTS[e.k];
+    Sound.effect();
     const col = { burn: '#ff9f1c', emp: '#4cc9f0', freeze: '#9be7ff', jam: '#c0c6d0', virus: '#b6ff3b', mine: '#ff4d4d', corrode: '#80ffdb',
       pull: '#b388ff', push: '#e9eef5', stun: '#ffe066', slow: '#b388ff', scramble: '#ffffff', drain: '#00f0d0' }[e.k] || '#fff';
     this.text(T.x + U.rf(-20, 20) * this.dpr, T.y + T.ht * 0.65, `${E.icon} ${E.name}`, col, 1.3, 0.75);
@@ -274,7 +280,7 @@ class Arena {
     const V = this.vis.get(ship.id);
     if (!V) return;
     const col = cls === 'bad' ? '#ff6b6b' : cls === 'combo' ? '#ffe066' : '#7df9ff';
-    this.text(V.x, V.y - V.ht - 26 * this.dpr, txt, col, 1.4, 1.1);
+    this.text(V.x, V.y - V.len * 0.75 - 20 * this.dpr, txt, col, 1.4, 1.1);
   }
 
   text(x, y, s, col, life = 1, scale = 1) {
@@ -289,14 +295,18 @@ class Arena {
     const d = this.dpr;
     for (const V of this.vis.values()) {
       const s = V.ship;
-      const tx = this.xOf(s.pos);
-      const dx = tx - V.x;
-      V.x += dx * Math.min(1, dt * 3.2);
-      V.moving = Math.max(V.moving - dt * 1.2, Math.min(1, Math.abs(dx) / (40 * d)));
+      const dx = this.sx(s.x) - V.x, dy = this.sy(s.y) - V.y;
+      const k = Math.min(1, dt * 3.2);
+      V.x += dx * k; V.y += dy * k;
+      const da = U.angDiff(s.heading, V.ang);
+      V.ang = U.angNorm(V.ang + da * Math.min(1, dt * 4));
+      V.moving = Math.max(V.moving - dt * 1.2, Math.min(1, (Math.hypot(dx, dy) + Math.abs(da) * V.len) / (40 * d)));
       if (V.moving > 0.3 && Math.random() < 0.6) {
+        const c = Math.cos(V.ang), sn = Math.sin(V.ang);
         for (const e of V.sprite.meta.engines) {
-          const dir = s.side ? -1 : 1;
-          this.parts.push({ x: V.x + (e.x * dir), y: V.y + e.y, vx: -dir * U.rf(60, 160) * d, vy: U.rf(-10, 10), life: 0, max: U.rf(0.2, 0.5), size: U.rf(1.5, 3) * d, col: GFX.SIDE_PAL[s.side].glow, add: true, drag: 0.1 });
+          const [ex, ey] = this.local(V, e.x, e.y);
+          const sp = U.rf(60, 160) * d;
+          this.parts.push({ x: ex, y: ey, vx: -c * sp + U.rf(-10, 10), vy: -sn * sp + U.rf(-10, 10), life: 0, max: U.rf(0.2, 0.5), size: U.rf(1.5, 3) * d, col: GFX.SIDE_PAL[s.side].glow, add: true, drag: 0.1 });
         }
       }
       V.flash = Math.max(0, V.flash - dt * 3);
@@ -311,6 +321,7 @@ class Arena {
         }
         if (V.dying >= 1.0 && !V.boom) {
           V.boom = true;
+          Sound.boom(true);
           this.explosion(V.x, V.y, 2.4, '#ffffff');
           this.rings.push({ x: V.x, y: V.y, t: 0, d: 0.9, r: V.len * 2.2, col: '#ffffff' });
           this.rings.push({ x: V.x, y: V.y, t: 0, d: 1.2, r: V.len * 3.2, col: GFX.SIDE_PAL[s.side].accent });
@@ -404,15 +415,15 @@ class Arena {
     const sx = (Math.random() - 0.5) * this.shake * d, sy = (Math.random() - 0.5) * this.shake * d;
     ctx.translate(sx, sy);
 
-    // тактическая шкала дистанции
+    // тактическая сетка поля (клетка = 2 единицы дистанции)
     ctx.save();
     ctx.strokeStyle = 'rgba(120,170,255,0.06)'; ctx.lineWidth = 1;
-    ctx.font = `${10 * d}px "Exo 2", sans-serif`; ctx.fillStyle = 'rgba(150,190,255,0.25)'; ctx.textAlign = 'center';
-    for (let i = 0; i <= FIELD_LEN; i += 2) {
-      const x = this.xOf(i);
-      ctx.beginPath(); ctx.moveTo(x, H * 0.05); ctx.lineTo(x, H - 18 * d); ctx.stroke();
-    }
+    for (let i = 0; i <= FIELD_W; i += 2) { const x = this.sx(i); ctx.beginPath(); ctx.moveTo(x, this.sy(0)); ctx.lineTo(x, this.sy(FIELD_H)); ctx.stroke(); }
+    for (let j = 0; j <= FIELD_H; j += 2) { const y = this.sy(j); ctx.beginPath(); ctx.moveTo(this.sx(0), y); ctx.lineTo(this.sx(FIELD_W), y); ctx.stroke(); }
+    ctx.strokeStyle = 'rgba(120,170,255,0.16)';
+    ctx.strokeRect(this.sx(0), this.sy(0), FIELD_W * this.sc, FIELD_H * this.sc);
     ctx.restore();
+    if (this.viewed && this.viewed.alive) this.drawArcs(ctx, this.vis.get(this.viewed.id));
 
     const active = this.b.active;
     // линия прицеливания активного корабля
@@ -525,7 +536,6 @@ class Arena {
     const x = V.x, y = V.y + bob;
     const sp = V.sprite, cw = sp.canvas.width, ch = sp.canvas.height;
     const pal = GFX.SIDE_PAL[s.side];
-    const dir = s.side ? -1 : 1;
     // кольцо активного корабля
     if (isActive && s.alive) {
       const p = 0.5 + 0.5 * Math.sin(this.time * 5);
@@ -533,14 +543,14 @@ class Arena {
       ctx.strokeStyle = U.rgba(pal.accent, 0.35 + p * 0.4);
       ctx.lineWidth = 2 * d;
       ctx.shadowColor = pal.accent; ctx.shadowBlur = 14 * d;
-      ctx.beginPath(); ctx.ellipse(x, y + V.ht * 0.55, V.len * 0.55, V.ht * 0.16, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, y, V.len * 0.62, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
     }
     ctx.save();
     ctx.globalAlpha = V.alpha;
     ctx.translate(x, y);
-    ctx.scale(dir, 1);
-    if (V.dying >= 0) ctx.rotate(V.dying * 0.15);
+    ctx.rotate(V.ang + (V.dying >= 0 ? V.dying * 0.15 : 0));
+    if (Math.cos(V.ang) < 0) ctx.scale(1, -1); // свет всегда сверху
     // пламя двигателей
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -568,25 +578,62 @@ class Arena {
     // щит
     if (s.alive && (s.shield > 0 || V.shieldFlash > 0) && s.s.maxShield > 0) {
       const rx = V.len * 0.62, ry = Math.max(V.ht * 0.62, V.len * 0.32);
-      const frac = s.shield / s.s.maxShield;
+      const frac = Math.min(1.5, s.shield / s.s.maxShield);
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.strokeStyle = `rgba(120,180,255,${0.06 + 0.12 * frac + 0.04 * Math.sin(this.time * 2 + V.phase)})`;
-      ctx.lineWidth = 1.5 * d;
-      ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = frac > 1 ? `rgba(200,230,255,${0.3 + 0.15 * Math.sin(this.time * 6)})` : `rgba(120,180,255,${0.06 + 0.12 * frac + 0.04 * Math.sin(this.time * 2 + V.phase)})`;
+      ctx.lineWidth = (frac > 1 ? 2.5 : 1.5) * d;
+      ctx.beginPath(); ctx.ellipse(x, y, rx, ry, V.ang, 0, Math.PI * 2); ctx.stroke();
       if (V.shieldFlash > 0) {
-        ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); ctx.clip();
+        ctx.beginPath(); ctx.ellipse(x, y, rx, ry, V.ang, 0, Math.PI * 2); ctx.clip();
         const hx = x + V.sfx, hy = y + V.sfy;
         const g = ctx.createRadialGradient(hx, hy, 0, hx, hy, rx * 1.4);
         g.addColorStop(0, `rgba(170,210,255,${V.shieldFlash * 0.75})`);
         g.addColorStop(0.4, `rgba(80,140,255,${V.shieldFlash * 0.25})`);
         g.addColorStop(1, 'rgba(40,80,255,0)');
-        ctx.fillStyle = g; ctx.fillRect(x - rx, y - ry, rx * 2, ry * 2);
+        ctx.fillStyle = g; ctx.fillRect(x - rx, y - rx, rx * 2, rx * 2);
         ctx.globalAlpha = V.shieldFlash * 0.7;
-        ctx.drawImage(this.hexPattern(), x - rx, y - ry, rx * 2, ry * 2);
+        ctx.drawImage(this.hexPattern(), x - rx, y - rx, rx * 2, rx * 2);
       }
       ctx.restore();
     }
+  }
+
+  // Секторы обстрела и фланги выбранного корабля
+  drawArcs(ctx, V) {
+    if (!V) return;
+    const s = V.ship, d = this.dpr, sc = this.sc;
+    ctx.save();
+    const seen = new Set();
+    const ws = s.weapons.slice().sort((a, b) => b.range - a.range);
+    for (const w of ws) {
+      const key = w.range + '_' + w.arc;
+      if (seen.has(key) || seen.size >= 3) continue;
+      seen.add(key);
+      const R = w.range * sc, a = w.arc >= 180 ? Math.PI : w.arc * Math.PI / 180;
+      const col = DMG[w.dt].color;
+      ctx.beginPath();
+      if (a >= Math.PI) ctx.arc(V.x, V.y, R, 0, Math.PI * 2);
+      else { ctx.moveTo(V.x, V.y); ctx.arc(V.x, V.y, R, V.ang - a, V.ang + a); ctx.closePath(); }
+      ctx.fillStyle = U.rgba(col, 0.035);
+      ctx.fill();
+      ctx.setLineDash([4 * d, 6 * d]);
+      ctx.strokeStyle = U.rgba(col, 0.3);
+      ctx.lineWidth = 1 * d;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // кольцо флангов: нос / борт / корма
+    const r = V.len * 0.78;
+    const seg = (from, to, col) => {
+      ctx.strokeStyle = col; ctx.lineWidth = 3 * d;
+      ctx.beginPath(); ctx.arc(V.x, V.y, r, V.ang + from, V.ang + to); ctx.stroke();
+    };
+    const P = Math.PI;
+    seg(-P / 3, P / 3, 'rgba(46,230,107,0.55)');
+    seg(P / 3, 2 * P / 3, 'rgba(255,224,102,0.55)'); seg(-2 * P / 3, -P / 3, 'rgba(255,224,102,0.55)');
+    seg(2 * P / 3, 4 * P / 3, 'rgba(255,77,77,0.6)');
+    ctx.restore();
   }
 
   hexPattern() {
@@ -608,7 +655,7 @@ class Arena {
     const s = V.ship, d = this.dpr;
     if (!s.alive) return;
     const bw = Math.max(64 * d, V.len * 0.8), bh = 5 * d;
-    const x = V.x - bw / 2, y = V.y - Math.max(V.ht * 0.62, V.len * 0.32) - 16 * d;
+    const x = V.x - bw / 2, y = V.y - V.len * 0.62 - 12 * d;
     ctx.save();
     // имя
     ctx.font = `600 ${10.5 * d}px "Exo 2", sans-serif`;
@@ -638,7 +685,7 @@ class Arena {
     // рамка просматриваемого корабля
     if (this.viewed === s) {
       const p = 0.6 + 0.4 * Math.sin(this.time * 4);
-      const hw = V.len * 0.62, hh = Math.max(V.ht * 0.65, V.len * 0.32), k = 10 * d;
+      const hw = V.len * 0.62, hh = V.len * 0.62, k = 10 * d;
       ctx.strokeStyle = `rgba(255,255,255,${p})`; ctx.lineWidth = 2 * d;
       const cx = V.x, cy = V.y;
       for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {

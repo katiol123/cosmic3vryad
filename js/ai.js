@@ -18,18 +18,18 @@ const AI = {
     const W = [0, 0, 0, 0, 0, 0];
     W[0] = dE < 0 ? 0.1 : 0.7 + 1.8 * dE;
     W[1] = dA < 0 ? 0.1 : 0.7 + 1.8 * dA;
-    W[2] = s.maxShield > 0 ? 0.25 + 2.2 * (1 - ship.shield / s.maxShield) : 0.03;
+    W[2] = s.maxShield > 0 ? 0.25 + 2.2 * Math.max(0, 1 - ship.shield / (s.maxShield * 1.5)) : 0.03;
     const hpLost = 1 - ship.hpFrac;
     W[3] = 0.1 + 3.2 * Math.pow(hpLost, 1.2) * Math.min(1.6, s.rPer / 6);
-    // манёвр ценен, если оружие не достаёт цель
-    let outOfRange = 0;
+    // манёвр ценен, если оружие не достаёт цель или нужно развернуться
+    let need = 0;
     const tgt = ship.target;
     if (tgt && battle) {
-      const d = battle.dist(ship, tgt);
-      const want = battle.desiredDistance(ship, tgt);
-      outOfRange = U.clamp(Math.abs(d - want) - ship.move, 0, 8) / 8;
+      need = battle.outOfRange(ship, tgt);
+      const turn = Math.abs(U.angDiff(Math.atan2(tgt.y - ship.y, tgt.x - ship.x), ship.heading)) * 180 / Math.PI;
+      if (turn > ship.s.turn) need += 0.4;
     }
-    W[4] = 0.35 + 1.6 * outOfRange + (ship.evadeBuff < 10 ? 0.15 : 0);
+    W[4] = 0.35 + 1.6 * Math.min(1, need) + (ship.evadeBuff < 10 ? 0.15 : 0);
     W[5] = 0.3 + (s.ew ? 0.7 : 0) + (dD >= 0 ? 0.6 + 1.4 * dD : 0) + (ship.data < 15 ? 0.2 : 0);
     return W;
   },
@@ -175,6 +175,7 @@ const AI = {
       const d = battle.dist(ship, e);
       let reach = 0;
       for (const w of ship.weapons) reach += weaponDps(w) * (w.range >= d ? 1 : 0.35);
+      reach *= FLANK[battle.aspect(ship, e)].k;
       const ehp = e.hp + e.shield * 0.7;
       const threat = U.sum(e.weapons, weaponDps);
       let v = reach * (1.4 - e.hpFrac * 0.6) / Math.sqrt(ehp + 30) + threat * 0.004;

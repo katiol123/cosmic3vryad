@@ -40,14 +40,14 @@ function computeStats(def) {
   const h = HULLS[def.hull];
   const zero = () => Object.fromEntries(DMG_KEYS.map(k => [k, 0]));
   const s = {
-    maxHp: h.hp, armor: h.armor, cap: h.cap, mass: 0, evasion: h.ev, init: h.init,
+    maxHp: h.hp, armor: h.armor, cap: h.cap, mass: 0, evasion: h.ev, init: h.init, turn: h.turn, turnPer: 4,
     resist: Object.assign(zero(), h.resist), shieldResist: zero(),
     maxShield: h.shield, shieldRegen: h.shield ? 4 : 0, shieldPassive: h.shield ? 2 : 0, hasShield: h.shield > 0,
     ePer: 1.5, eCap: 10, ePass: 0, over: 0.02,
     aPer: 1.5, aCap: 10, aPass: 0, critStar: 0.012,
     rPer: 2, rPass: 0, cleanse: 0,
     thrust: 0.6, evadePer: 1.5, freeMove: 1,
-    dPer: 1, dPass: 0, dCap: 30, acc: 0, crit: 5, critMult: 1.6, range: 0,
+    dPer: 1, dPass: 0, dCap: 30, acc: 0, crit: 5, critMult: 2, range: 0,
     ew: null, ewRes: 0, extraTurn: 0, phase: 0, reflect: 0, rage: 0, wcap: 0, cascade: 0, explDmg: 0,
     bias: h.bias.slice(), weapons: [], artifacts: [],
   };
@@ -62,7 +62,7 @@ function computeStats(def) {
         for (const k in it.resist) s.shieldResist[k] = Math.min(0.8, s.shieldResist[k] + it.resist[k]);
         break;
       case 'engine':
-        s.thrust = it.thrust; s.evadePer = it.evade; s.init += it.init; s.evasion += it.ev; break;
+        s.thrust = it.thrust; s.evadePer = it.evade; s.init += it.init; s.evasion += it.ev; s.turn += it.turn || 0; break;
       case 'reactor':
         s.ePer = it.ePer; s.eCap = it.eCap; s.ePass += it.ePass; s.over += it.over; break;
       case 'arsenal':
@@ -75,7 +75,7 @@ function computeStats(def) {
         s.range += it.range; s.acc += it.acc; s.evasion += it.ev; break;
       case 'ew':
         if (it.kind) s.ew = { kind: it.kind, cost: it.cost, power: it.power, name: it.name };
-        s.ewRes += it.ewRes; break;
+        s.ewRes += it.ewRes; s.dPass += it.dPass || 0; break;
       case 'armor':
         s.maxHp += it.hp; s.armor += it.armor; s.evasion += it.ev;
         for (const k in it.resist) s.resist[k] = Math.min(0.7, s.resist[k] + it.resist[k]);
@@ -98,7 +98,7 @@ function computeStats(def) {
   s.weapons = s.weapons.map(it => ({
     it, name: it.name, res: it.res, dt: it.dt, fx: it.fx,
     dmin: it.dmin, dmax: it.dmax, shots: it.shots, cost: it.cost, rof: it.rof,
-    range: it.range + s.range, acc: it.acc, crit: it.crit,
+    range: it.range + s.range, acc: it.acc, crit: it.crit, arc: it.arc,
     cap: Math.max(it.cost, Math.round(it.cap * (1 + s.wcap))),
     pierce: it.pierce, armorPen: it.armorPen, homing: it.homing, eff: it.eff,
     dmgMul: it.dt === 'explosive' ? 1 + s.explDmg : 1,
@@ -130,7 +130,10 @@ class Ship {
     this.weapons = this.s.weapons.map(w => Object.assign({}, w, { charge: Math.ceil(w.cost * 0.5) }));
     this.evadeBuff = 0;
     this.move = 0;
-    this.pos = side === 0 ? U.rf(4, 7) : 22 - U.rf(4, 7);
+    // положение на двумерном поле боя задаёт Battle
+    this.x = 0; this.y = 0; this.heading = side === 0 ? 0 : Math.PI;
+    this.turnLeft = 0;
+    this.nextAt = 0;
     this.statuses = [];
     this.critCharges = 0;
     this.alive = true;
@@ -148,8 +151,8 @@ class Ship {
     else this.statuses.push({ k, v, t });
   }
   get evasion() {
-    const slow = this.status('slow');
-    return U.clamp(this.s.evasion + this.evadeBuff - (slow ? slow.v : 0), 0, 65);
+    const slow = this.status('slow'), hk = this.status('hacked');
+    return U.clamp(this.s.evasion + this.evadeBuff - (slow ? slow.v : 0) - (hk ? hk.v : 0), 0, 65);
   }
   get armor() {
     const c = this.status('corrode');
@@ -196,7 +199,8 @@ class Ship {
     if (counts[1]) { g.ammo = n(1) * s.aPer; this.feed('ammo', g.ammo); }
     if (counts[2]) {
       const before = this.shield;
-      this.shield = Math.min(s.maxShield, this.shield + n(2) * s.shieldRegen);
+      // блоки щита могут перезарядить щит сверх максимума — до 150%
+      this.shield = Math.max(this.shield, Math.min(s.maxShield * 1.5, this.shield + n(2) * s.shieldRegen));
       g.shield = this.shield - before;
     }
     if (counts[3]) {
@@ -208,6 +212,7 @@ class Ship {
     if (counts[4]) {
       g.thrust = n(4) * s.thrust;
       this.move += g.thrust;
+      this.turnLeft += n(4) * s.turnPer;
       this.evadeBuff = Math.min(45, this.evadeBuff + n(4) * s.evadePer);
     }
     if (counts[5]) { g.data = n(5) * s.dPer; this.feed('data', g.data); }
@@ -231,7 +236,7 @@ class Ship {
     let hullDmg = 0;
     const raw = toShield + direct;
     if (raw > 0) {
-      const armor = Math.max(0, this.armor * (1 - (D.armorIgnore || 0)) - (opt.armorPen || 0));
+      const armor = Math.max(0, this.armor * (1 - (D.armorIgnore || 0)) * (opt.halfArmor ? 0.5 : 1) - (opt.armorPen || 0));
       hullDmg = raw * D.hull * (1 - s.resist[type]) * (1 - armor);
       this.hp -= hullDmg;
     }

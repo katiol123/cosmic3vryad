@@ -111,6 +111,7 @@ const Menu = {
     const foot = h('div', { class: 'menu-foot' },
       h('button', { class: 'btn ghost', onclick: () => Modal.help() }, '📖 Справочник'),
       h('button', { class: 'btn ghost', onclick: () => Catalog.open() }, '🛰 Каталог оборудования'),
+      h('button', { class: 'btn ghost', onclick: e => { const on = Sound.toggle(); e.currentTarget.textContent = on ? '🔊 Звук: вкл' : '🔇 Звук: выкл'; } }, Sound.on ? '🔊 Звук: вкл' : '🔇 Звук: выкл'),
       h('span', { class: 'stat' }, `${HULL_LIST.length} корпусов · ${Object.keys(ITEMS).length} моделей оборудования`));
 
     el.append(parade, h('div', { class: 'menu-inner' }, logo, h('div', { class: 'mcards' }, custom, rnd), foot));
@@ -172,11 +173,12 @@ const Setup = {
         h('div', { class: 'sc-name' }, d.name),
         h('div', { class: 'sc-hull' }, `${hl.name} · `, h('span', { style: { color: MAKER[hl.maker].color } }, MAKER[hl.maker].name)),
         h('div', { class: 'chips' },
-          h('span', { class: 'chip hp' }, '♥ ' + s.maxHp),
-          s.maxShield ? h('span', { class: 'chip sh' }, '⬡ ' + s.maxShield) : null,
-          h('span', { class: 'chip' }, '✦ ' + s.weapons.length),
-          h('span', { class: 'chip' }, '⚔ ' + Math.round(U.sum(s.weapons, weaponDps)) + '/ход'),
-          h('span', { class: 'chip' + (over ? ' red' : '') }, `⚖ ${s.mass}/${s.cap}`)),
+          Info.helpBind(h('span', { class: 'chip hp' }, '♥ ' + s.maxHp), 'Прочность'),
+          s.maxShield ? Info.helpBind(h('span', { class: 'chip sh' }, '⬡ ' + s.maxShield), 'Щит') : null,
+          Info.helpBind(h('span', { class: 'chip' }, '➤ ' + s.init), 'Инициатива'),
+          Info.helpBind(h('span', { class: 'chip' }, '⟳ ' + s.turn + '°'), 'Поворот'),
+          Info.helpBind(h('span', { class: 'chip' }, '⚔ ' + Math.round(U.sum(s.weapons, weaponDps)) + '/ход'), 'Потенциал урона'),
+          Info.helpBind(h('span', { class: 'chip' + (over ? ' red' : '') }, `⚖ ${s.mass}/${s.cap}`), 'Масса')),
         h('div', { class: 'sc-weap' }, s.weapons.map(w => h('span', { style: { color: DMG[w.dt].color } }, w.it.base)).reduce((a, x, k) => (k ? a.concat([' · ', x]) : [x]), []))),
       h('div', { class: 'sc-act' },
         h('button', { class: 'ibtn', title: 'Изменить', onclick: () => Editor.open(side, i) }, '✎'),

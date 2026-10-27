@@ -14,6 +14,8 @@ const U = (() => {
     clamp: (v, a, b) => (v < a ? a : v > b ? b : v),
     lerp: (a, b, t) => a + (b - a) * t,
     dist: (x1, y1, x2, y2) => Math.hypot(x2 - x1, y2 - y1),
+    angNorm: a => { a %= Math.PI * 2; return a > Math.PI ? a - Math.PI * 2 : a < -Math.PI ? a + Math.PI * 2 : a; },
+    angDiff: (a, b) => U.angNorm(a - b),
     shuffle(arr) {
       for (let i = arr.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));

@@ -6,9 +6,10 @@
 (function main() {
   Tip.init();
   Overlay.init();
+  Sound.init();
   BG.init();
   Game.load();
-  Clock.speed = [0.5, 1, 2, 4].includes(Store.get('speed', 1)) ? Store.get('speed', 1) : 1;
+  Clock.speed = [0.5, 1, 2, 4, 8].includes(Store.get('speed', 1)) ? Store.get('speed', 1) : 1;
   if (!Game.fleets[0].ships.length || !Game.fleets[1].ships.length) Game.randomize();
   Menu.build();
   Screens.show('scr-menu');

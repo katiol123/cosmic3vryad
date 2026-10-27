@@ -112,7 +112,7 @@ const Editor = {
         h('div', { class: 'bar' }, h('i', { style: { width: massPct + '%' } }))),
       h('div', { class: 'ph sm' }, 'Частота блоков на поле'),
       h('div', { html: Info.biasBar(s.bias) }),
-      h('div', { class: 'stats' }, Info.shipLines(s).map(([k, v]) => h('div', { class: 'st-row' }, h('span', null, k), h('b', { html: String(v) })))),
+      h('div', { class: 'stats' }, Info.shipLines(s).map(([k, v]) => Info.statRow(k, v))),
     );
   },
 
