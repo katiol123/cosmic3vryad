@@ -96,7 +96,7 @@ const SectorUI = {
     if (!cv) return;
     const r = cv.getBoundingClientRect();
     this.dpr = Math.min(2, devicePixelRatio || 1);
-    cv.width = Math.max(100, r.width * this.dpr); cv.height = Math.max(100, r.height * this.dpr);
+    cv.width = Math.max(100, Math.round(r.width * this.dpr)); cv.height = Math.max(100, Math.round(r.height * this.dpr));
     this.bgFor = null;
   },
   baseZoom() { const cv = this.els.cv; return Math.min(cv.width, cv.height) / (2 * 1080); },
@@ -107,6 +107,11 @@ const SectorUI = {
     const pos = this.playerPos();
     if (pos) { this.cam.x = pos[0]; this.cam.y = pos[1]; }
   },
+  // координаты события в пикселях холста (по фактическому масштабу, а не по devicePixelRatio)
+  evPos(e) {
+    const cv = this.els.cv, b = cv.getBoundingClientRect();
+    return [(e.clientX - b.left) * cv.width / Math.max(1, b.width), (e.clientY - b.top) * cv.height / Math.max(1, b.height)];
+  },
   toScreen(x, y) { const c = this.cam, cv = this.els.cv; return [(x - c.x) * c.z + cv.width / 2, (y - c.y) * c.z + cv.height / 2]; },
   toWorld(sx, sy) { const c = this.cam, cv = this.els.cv; return [(sx - cv.width / 2) / c.z + c.x, (sy - cv.height / 2) / c.z + c.y]; },
 
@@ -115,8 +120,7 @@ const SectorUI = {
     let drag = null;
     cv.addEventListener('wheel', e => {
       e.preventDefault();
-      const b = cv.getBoundingClientRect();
-      const sx = (e.clientX - b.left) * this.dpr, sy = (e.clientY - b.top) * this.dpr;
+      const [sx, sy] = this.evPos(e);
       const [wx, wy] = this.toWorld(sx, sy);
       const base = this.baseZoom();
       this.cam.z = U.clamp(this.cam.z * (e.deltaY < 0 ? 1.15 : 0.87), base * 0.8, base * 6);
@@ -127,20 +131,18 @@ const SectorUI = {
     cv.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, cx: this.cam.x, cy: this.cam.y, moved: false }; cv.setPointerCapture(e.pointerId); });
     cv.addEventListener('pointermove', e => {
       const b = cv.getBoundingClientRect();
-      const sx = (e.clientX - b.left) * this.dpr, sy = (e.clientY - b.top) * this.dpr;
+      const [sx, sy] = this.evPos(e);
       if (drag) {
         const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
         if (Math.abs(dx) + Math.abs(dy) > 5) { drag.moved = true; this.follow = false; }
-        if (drag.moved) { this.cam.x = drag.cx - dx * this.dpr / this.cam.z; this.cam.y = drag.cy - dy * this.dpr / this.cam.z; }
+        const k = cv.width / Math.max(1, b.width);
+        if (drag.moved) { this.cam.x = drag.cx - dx * k / this.cam.z; this.cam.y = drag.cy - dy * k / this.cam.z; }
       }
       this.hover = this.pick(sx, sy);
       this.showTip(e, b);
     });
     cv.addEventListener('pointerup', e => {
-      if (drag && !drag.moved) {
-        const b = cv.getBoundingClientRect();
-        this.click((e.clientX - b.left) * this.dpr, (e.clientY - b.top) * this.dpr);
-      }
+      if (drag && !drag.moved) this.click(...this.evPos(e));
       drag = null;
     });
     cv.addEventListener('pointerleave', () => { this.hover = null; this.els.tip.style.opacity = 0; });
@@ -283,13 +285,15 @@ const SectorUI = {
     this.busy = false;
     this.els.turn.disabled = false;
     this.refresh();
+    if (this.contBattle) { this.contBattle = false; if (w.playerBattle()) setTimeout(() => this.nextDay(), 0); }
   },
 
   // бой игрока за один день: на экране боя «три в ряд»
   async liveBattle(wb, dt) {
     const w = this.world;
     this.closeDock(true);
-    await BattleUI.playLive(wb, dt, w);
+    // бой продолжается — остаёмся на экране боя, следующий день запустится сам
+    if (await BattleUI.playLive(wb, dt, w)) { this.contBattle = true; return; }
     Screens.show('scr-sector');
     this.active = true;
     Sound.startDrone();
@@ -711,6 +715,9 @@ const SectorUI = {
   // ---------- отрисовка ----------
   frame(dt) {
     if (!this.active || !this.els || !this.world) return;
+    // размер холста следует за окном (иначе картинка растягивается и щелчок «уезжает»)
+    const r = this.els.cv.getBoundingClientRect();
+    if (r.width > 0 && Math.abs(this.els.cv.width - Math.round(r.width * this.dpr)) > 1) this.resize();
     this.t += dt;
     if (this.anim < 1) this.anim = Math.min(1, this.anim + dt * 1.25);
     if (this.follow) {

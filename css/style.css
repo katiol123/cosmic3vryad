@@ -609,3 +609,4 @@ select { background: rgba(10,16,36,.9); border: 1px solid var(--line); border-ra
 .gauge.wear-g { height: 14px; }
 .gauge.wear-g i { background: linear-gradient(90deg, #2a9d8f, #5ee0c8); }
 .gauge.wear-g.bad i { background: linear-gradient(90deg, #b5452b, #ff8c42); }
+.btn.small { padding: 5px 10px; font-size: 12px; }

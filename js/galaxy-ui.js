@@ -77,7 +77,7 @@ const GalaxyUI = {
     if (!cv) return;
     const r = cv.getBoundingClientRect();
     this.dpr = Math.min(2, devicePixelRatio || 1);
-    cv.width = Math.max(100, r.width * this.dpr); cv.height = Math.max(100, r.height * this.dpr);
+    cv.width = Math.max(100, Math.round(r.width * this.dpr)); cv.height = Math.max(100, Math.round(r.height * this.dpr));
     this.bg = GFX.starfield(cv.width, cv.height, this.world ? this.world.seed : 7);
   },
   fit() {
@@ -94,7 +94,7 @@ const GalaxyUI = {
     cv.addEventListener('wheel', e => {
       e.preventDefault();
       const b = cv.getBoundingClientRect();
-      const sx = (e.clientX - b.left) * this.dpr, sy = (e.clientY - b.top) * this.dpr;
+      const sx = (e.clientX - b.left) * cv.width / Math.max(1, b.width), sy = (e.clientY - b.top) * cv.height / Math.max(1, b.height);
       const [wx, wy] = this.toWorld(sx, sy);
       this.cam.z = U.clamp(this.cam.z * (e.deltaY < 0 ? 1.15 : 0.87), 0.3, 4);
       const [nx, ny] = this.toWorld(sx, sy);
@@ -103,7 +103,7 @@ const GalaxyUI = {
     cv.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, cx: this.cam.x, cy: this.cam.y, moved: false }; cv.setPointerCapture(e.pointerId); });
     cv.addEventListener('pointermove', e => {
       const b = cv.getBoundingClientRect();
-      const sx = (e.clientX - b.left) * this.dpr, sy = (e.clientY - b.top) * this.dpr;
+      const sx = (e.clientX - b.left) * cv.width / Math.max(1, b.width), sy = (e.clientY - b.top) * cv.height / Math.max(1, b.height);
       if (drag) {
         const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
         if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
@@ -115,7 +115,7 @@ const GalaxyUI = {
     cv.addEventListener('pointerup', e => {
       if (drag && !drag.moved) {
         const b = cv.getBoundingClientRect();
-        const p = this.pick((e.clientX - b.left) * this.dpr, (e.clientY - b.top) * this.dpr);
+        const p = this.pick((e.clientX - b.left) * cv.width / Math.max(1, b.width), (e.clientY - b.top) * cv.height / Math.max(1, b.height));
         if (p) { this.sel = p; this.tab = 'sel'; this.els.tabs.querySelectorAll('button').forEach(x => x.classList.toggle('on', x.textContent === 'Выбрано')); this.refresh(); }
       }
       drag = null;
@@ -381,6 +381,9 @@ const GalaxyUI = {
   // ---------- Отрисовка ----------
   frame(dt) {
     if (!this.active || !this.els || !this.bg) return;
+    // размер холста следует за окном (иначе картинка растягивается и щелчок «уезжает»)
+    const r = this.els.cv.getBoundingClientRect();
+    if (r.width > 0 && Math.abs(this.els.cv.width - Math.round(r.width * this.dpr)) > 1) { const k = Math.round(r.width * this.dpr) / this.els.cv.width; this.resize(); if (this.fit && Math.abs(k - 1) > 0.2) this.fit(); }
     this.t += dt;
     if (this.anim < 1) this.anim = Math.min(1, this.anim + dt * Math.max(1.6, this.daysPerSec * 1.2));
     if (this.playing && !this.busy && this.anim >= 1) {

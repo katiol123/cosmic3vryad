@@ -25,44 +25,71 @@ const BattleUI = {
     this.launch(cfg);
   },
   // Бой кампании: за один день проходит только часть боя (dt единиц времени)
+  // Бой кампании: за один день проходит только часть боя (dt единиц времени).
+  // Пока бой идёт, экран боя не закрывается — дни сменяют друг друга прямо здесь.
   async playLive(wb, dt, world) {
-    if (this.battle && this.battle !== wb.b) this.battle.ui = {};
-    Clock.clear();
-    Clock.paused = false;
-    this.liveMode = true;
-    this.liveWorld = world;
-    this.liveWb = wb;
-    this.build();
-    this.battle = wb.b;
-    wb.b.ui = this;
-    this.human = null;
-    this.follow = true;
-    this.buildPortraits();
-    Screens.show('scr-battle');
-    this.active = true;
-    await new Promise(r => requestAnimationFrame(r));
-    this.bv.resize();
-    this.arena.setBattle(wb.b);
-    for (const V of this.arena.vis.values()) if (!V.ship.alive) V.alpha = 0;
-    const me = wb.b.ships.find(s => s.ctrl === 'human' && s.alive) || wb.b.ships.find(s => s.alive);
-    this.follow = !(me && me.ctrl === 'human');
-    this.els.follow.classList.toggle('on', this.follow);
-    this.setView(me);
-    this.els.log.innerHTML = '';
-    for (const e of wb.b.log.slice(-25)) this.onLog(e);
+    const cont = this.liveMode && this.liveWb === wb && this.battle === wb.b && Screens.cur && Screens.cur.id === 'scr-battle';
+    if (!cont) {
+      if (this.battle && this.battle !== wb.b) this.battle.ui = {};
+      Clock.clear();
+      Clock.paused = false;
+      this.liveMode = true;
+      this.liveWorld = world;
+      this.liveWb = wb;
+      this.build();
+      this.battle = wb.b;
+      wb.b.ui = this;
+      this.human = null;
+      this.buildPortraits();
+      Screens.show('scr-battle');
+      this.active = true;
+      await new Promise(r => requestAnimationFrame(r));
+      this.bv.resize();
+      this.arena.setBattle(wb.b);
+      for (const V of this.arena.vis.values()) if (!V.ship.alive) V.alpha = 0;
+      const me = wb.b.ships.find(s => s.ctrl === 'human' && s.alive) || wb.b.ships.find(s => s.alive);
+      this.follow = !(me && me.ctrl === 'human');
+      this.els.follow.classList.toggle('on', this.follow);
+      this.setView(me);
+      this.els.log.innerHTML = '';
+      for (const e of wb.b.log.slice(-25)) this.onLog(e);
+    }
     this.liveUntil = wb.b.time + dt;
-    const day = world.day - wb.day + 1;
-    this.bannerText(`ДЕНЬ ${day} БОЯ`, 'good');
-    Sound.intro();
-    Sound.startDrone();
-    await Clock.wait(900);
+    this.bannerText(`ДЕНЬ ${world.day - wb.day + 1} БОЯ`, 'good');
+    if (!cont) { Sound.intro(); Sound.startDrone(); await Clock.wait(900); }
+    this.refreshEscape();
     await wb.b.advance(dt);
-    await Clock.wait(wb.b.over ? 1600 : 700);
+    // игрок всё ещё сражается — экран боя остаётся, следующий день начнётся сразу
+    const mine = wb.b.ships.find(s => s.ref === world.player.id);
+    if (!wb.b.over && mine && mine.alive) return true;
+    await Clock.wait(wb.b.over ? 1600 : 400);
     wb.b.ui = {};
     if (this.human) { const hm = this.human; this.human = null; hm.res(null); }
     this.active = false;
     this.liveMode = false;
+    this.liveWb = null;
     Sound.stopDrone();
+    return false;
+  },
+  // попытка выйти из боя кампании (одна в день боя)
+  liveEscape() {
+    const w = this.liveWorld, wb = this.liveWb;
+    if (!w || !wb || this.escDay === w.day) return;
+    this.escDay = w.day;
+    const ok = w.playerEscape();
+    if (ok) {
+      this.bannerText('ВЫ ВЫШЛИ ИЗ БОЯ', 'good');
+      if (this.human) { const hm = this.human; this.human = null; hm.res(null); }
+      wb.b.cutDay = true;
+    } else this.bannerText('УЙТИ НЕ УДАЛОСЬ', 'bad');
+    this.refreshEscape();
+  },
+  refreshEscape() {
+    const b = this.els && this.els.esc;
+    if (!b || !this.liveWorld) return;
+    const used = this.escDay === this.liveWorld.day;
+    b.disabled = used;
+    b.title = used ? 'Сегодня попытка уже была — следующая завтра' : 'Попытаться оторваться от противника (одна попытка в день)';
   },
 
   launch(cfg) {
@@ -117,7 +144,7 @@ const BattleUI = {
         E.snd = h('button', { class: 'ibtn' + (Sound.on ? ' on' : ''), title: 'Звук', onclick: () => { E.snd.classList.toggle('on', Sound.toggle()); E.snd.textContent = Sound.on ? '🔊' : '🔇'; } }, Sound.on ? '🔊' : '🔇'),
         E.mus = h('button', { class: 'ibtn' + (Sound.musicOn ? ' on' : ''), title: 'Фоновая музыка', onclick: () => E.mus.classList.toggle('on', Sound.toggleMusic()) }, '🎵'),
         h('button', { class: 'ibtn', title: 'Справочник', onclick: () => Modal.help() }, '?'),
-        this.liveMode ? null : h('button', { class: 'ibtn danger', title: 'Покинуть бой', onclick: () => this.exit() }, '⏏')));
+        this.liveMode ? (E.esc = h('button', { class: 'btn danger small', onclick: () => this.liveEscape() }, '↩ Уйти из боя')) : h('button', { class: 'ibtn danger', title: 'Покинуть бой', onclick: () => this.exit() }, '⏏')));
     const top = h('div', { class: 'bt-top' }, E.p0, center, E.p1);
 
     // левая панель — поле

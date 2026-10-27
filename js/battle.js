@@ -286,6 +286,7 @@ class Battle {
   async advance(dt) {
     const until = this.time + dt;
     while (!this.over && !this.stopped) {
+      if (this.cutDay) { this.cutDay = false; break; } // игрок вышел из боя — день боя закончен
       const n = this.nextShip();
       if (!n || n.nextAt > until) break;
       await this.step();
