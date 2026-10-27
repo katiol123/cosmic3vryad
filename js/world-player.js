@@ -36,6 +36,10 @@ Object.assign(World.prototype, {
     for (const k of ['armor', 'radar', 'ew', 'artifact']) def.slots[k] = def.slots[k].map(() => '-');
     autoFill(def, 2);
     for (const k of ['armor', 'radar', 'ew', 'artifact']) def.slots[k] = def.slots[k].map(() => null);
+    // трюм не меньше 15: снимаем второстепенное, но оставляем хотя бы два орудия
+    const cap = HULLS[def.hull].cap;
+    for (const [k, keep] of [['computer', 0], ['droid', 0], ['arsenal', 0], ['weapon', 2], ['reactor', 0]])
+      for (let i = def.slots[k].length - 1; i >= keep && cap - defMass(def) < 10; i--) def.slots[k][i] = null;
     return def;
   },
   createPlayer(name) {
@@ -209,15 +213,18 @@ Object.assign(World.prototype, {
       this.startBattle(p.loc, [p], guards.slice(0, 4));
       return;
     }
-    const dmg = this.strength(p) / 25;
-    b.defense -= dmg;
+    // обстреливают и союзники в секторе: военные фракций и наёмники, которые не в бою
+    const allies = this.present(p.loc).filter(o => o !== p && !o.battle && o.faction !== PIRATE && !NONCOMBAT.includes(o.kind) && !this.hostile(p, o));
+    const dmg = this.siegeDamage(p) + U.sum(allies, o => this.siegeDamage(o));
+    b.defense -= dmg; b.siegeDay = this.day;
     for (const q of (this.openQuests ? this.openQuests() : [])) if (q.type === 'base' && q.base === b.id) {
       q.contrib[p.id] = (q.contrib[p.id] || 0) + dmg;
       if (!q.takers.includes(p.id)) q.takers.push(p.id);
     }
-    // станция отстреливается
-    p.hp = Math.max(1, p.hp - p.maxHp * 0.04);
+    // станция отстреливается; на последнем издыхании — отход
+    p.hp -= p.maxHp * 0.04;
     if (b.defense <= 0) { p.target = null; this.destroyBase(b, p); return; }
+    if (p.hp < p.maxHp * 0.15) { p.target = null; this.log('⚠ Корпус на исходе — вы отходите от станции. Почините корабль и возвращайтесь.', 'player', { s: p.loc }); return; }
     this.log(`💥 Обстрел станции «${b.name}»: оборона ${Math.round(b.defense)}/${Math.round(b.maxDefense || 2500)}. Станция отвечает огнём.`, 'player', { s: p.loc });
   },
   undock() { if (this.player) this.player.docked = null; },
@@ -254,7 +261,7 @@ Object.assign(World.prototype, {
     const p = this.player;
     if (!wb || wb.b.over || p.battle) return;
     const foes = wb.b.ships.filter(sh => sh.alive && sh.side !== side).map(sh => this.agents.get(sh.ref)).filter(Boolean);
-    for (const f of foes) if (f.faction >= 0 && f.faction !== PIRATE && !this.hostile(p, f)) this.addRepRaw(p, f.faction, -15);
+    for (const f of foes) { const ff = f.kind === 'pilot' ? f.member : f.faction; if (ff >= 0 && ff !== PIRATE && !this.hostile(p, f)) this.addRepRaw(p, ff, -15); }
     const allies = wb.b.ships.filter(sh => sh.alive && sh.side === side).map(sh => this.agents.get(sh.ref)).filter(Boolean);
     for (const a of allies) if (a.faction >= 0 && a.faction !== PIRATE) this.addRepRaw(p, a.faction, 3);
     wb.b.addShip(this.entry(p), side);
@@ -377,7 +384,7 @@ Object.assign(World.prototype, {
   buyItem(cat, idx, id) {
     const p = this.player, it = ITEMS[id];
     const old = p.def.slots[cat][idx] ? ITEMS[p.def.slots[cat][idx]] : null;
-    const insOld = old && (p.insuredItems || []).includes(old.id);
+    const insOld = old && this.isInsured(old.id);
     const cost = this.shopPrice(it) - (old ? (insOld ? Math.round(this.shopPrice(old) * 0.1) : this.sellValue(old.id, slotWear(p.def, cat, idx))) : 0);
     if (p.credits < cost) return 'Не хватает кредитов';
     if (defMass(p.def) - (old ? old.mass : 0) + it.mass > HULLS[p.def.hull].cap) return 'Не хватает вместимости корпуса';
@@ -395,9 +402,7 @@ Object.assign(World.prototype, {
   sellItem(cat, idx) {
     const p = this.player, id = p.def.slots[cat][idx];
     if (!id) return;
-    const ins = (p.insuredItems || []).indexOf(id);
-    if (ins >= 0) { p.insuredItems.splice(ins, 1); p.credits += Math.round(this.shopPrice(ITEMS[id]) * 0.1); } // страховое — как лом
-    else p.credits += this.sellValue(id, slotWear(p.def, cat, idx));
+    p.credits += this.playerItemValue(id, slotWear(p.def, cat, idx));
     const pl = this.planets[p.docked];
     if (pl && pl.shipyard && this.addStock) this.addStock(pl, id); // проданное пополняет склад верфи
     p.def.slots[cat][idx] = null;
@@ -406,7 +411,7 @@ Object.assign(World.prototype, {
   },
   buyHull(hullId) {
     const p = this.player, H = HULLS[hullId];
-    const cost = this.shopPrice(H) - Math.round(this.shopPrice(HULLS[p.def.hull]) * 0.5);
+    const cost = this.shopPrice(H) - this.hullTradeIn();
     if (p.credits < cost) return 'Не хватает кредитов';
     const pl = this.planets[p.docked];
     if (pl && this.yard && !this.stockOf(pl, hullId)) return 'Этого корпуса уже нет на складе';
@@ -416,13 +421,14 @@ Object.assign(World.prototype, {
     // не поместившееся оборудование продаётся за полцены
     const order = ['artifact', 'armor', 'ew', 'radar', 'computer', 'droid', 'arsenal', 'shield', 'weapon', 'reactor', 'engine'];
     for (const k of order) for (let i = nd.slots[k].length - 1; i >= 0 && defMass(nd) > H.cap; i--) {
-      if (nd.slots[k][i]) { p.credits += this.sellValue(nd.slots[k][i], slotWear(nd, k, i)); nd.slots[k][i] = null; }
+      if (nd.slots[k][i]) { p.credits += this.playerItemValue(nd.slots[k][i], slotWear(nd, k, i)); nd.slots[k][i] = null; }
     }
     // снятое из-за меньшего числа слотов — тоже продаём
     const before = defItems(p.def).map(i => i.id), after = defItems(nd).map(i => i.id);
-    for (const id of before) { const k = after.indexOf(id); if (k >= 0) after.splice(k, 1); else p.credits += this.sellValue(id, 0.3); }
+    for (const id of before) { const k = after.indexOf(id); if (k >= 0) after.splice(k, 1); else p.credits += this.playerItemValue(id, 0.3); }
     nd.name = p.name;
     p.def = nd;
+    p.insuredHull = null;
     p.hp = null;
     this.refreshKeep(p, true);
     // лишний груз не помещается
@@ -430,12 +436,24 @@ Object.assign(World.prototype, {
     for (const g in p.cargo) { if (over <= 0) break; const d = Math.min(over, p.cargo[g]); p.cargo[g] -= d; over -= d; if (!p.cargo[g]) delete p.cargo[g]; }
     return null;
   },
+  // сколько верфь даст за модуль игрока: страховые (выданные бесплатно) — только как лом
+  playerItemValue(id, wear) {
+    const p = this.player, i = (p.insuredItems || []).indexOf(id);
+    if (i >= 0) { p.insuredItems.splice(i, 1); return Math.round(this.shopPrice(ITEMS[id]) * 0.1); }
+    return this.sellValue(id, wear);
+  },
+  isInsured(id) { return (this.player.insuredItems || []).includes(id); },
+  // зачёт старого корпуса при покупке нового: страховой — как лом
+  hullTradeIn() {
+    const p = this.player, H = HULLS[p.def.hull];
+    return Math.round(this.shopPrice(H) * (p.insuredHull === H.id ? 0.1 : 0.5));
+  },
   // продать трофей из трюма
   sellStash(i) {
     const p = this.player;
     if (!p.stash || i < 0 || i >= p.stash.length) return;
     const { id, wear } = this.stashTake(p, i);
-    p.credits += this.sellValue(id, wear);
+    p.credits += this.playerItemValue(id, wear);
     const pl = this.planets[p.docked];
     if (pl && pl.shipyard && this.addStock) this.addStock(pl, id);
   },

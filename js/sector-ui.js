@@ -75,7 +75,8 @@ const SectorUI = {
     E.side.append(E.tabs, E.body);
     el.appendChild(h('div', { class: 'gx-main' },
       h('div', { class: 'gx-map panel sx-map' }, E.cv, E.tip, E.toasts, E.hud, E.travel, E.dock,
-        h('div', { class: 'gx-legend' }, 'Щелчок — лететь (планета: стыковка, ворота: прыжок) · по кораблю или бою — выбрать · колёсико — масштаб · пробел — ход')),
+        h('div', { class: 'gx-legend' }, h('span', { class: 'fine-only' }, 'Щелчок — лететь (планета: стыковка, ворота: прыжок) · по кораблю или бою — выбрать · колёсико — масштаб · пробел — ход'),
+          h('span', { class: 'touch-only' }, 'Тап — лететь · тап по кораблю — выбрать'))),
       E.side));
     this.bindMap();
     if (!this._ro) this._ro = new ResizeObserver(() => this.resize());
@@ -170,9 +171,14 @@ const SectorUI = {
     const d = this.dpr, cv = this.els.cv;
     ctx.save();
     ctx.font = `600 ${size * d}px "Exo 2", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = base;
-    const wdt = ctx.measureText(text).width, m = 8 * d;
+    const wdt = ctx.measureText(text).width, m = 8 * d, hgt = size * d * 1.15;
     x = U.clamp(x, m + wdt / 2, cv.width - m - wdt / 2);
     y = U.clamp(y, m + (base === 'bottom' ? size * d : 0), cv.height - m - (base === 'top' ? size * d : 0));
+    // не налезать на уже нарисованные подписи этого кадра
+    const placed = this._placed || (this._placed = []);
+    const top = () => (base === 'top' ? y : y - hgt);
+    for (let k = 0; k < 5 && placed.some(r => Math.abs(r.x - x) < (r.w + wdt) / 2 + 4 * d && Math.abs(r.y - top()) < hgt); k++) y += base === 'top' ? hgt : -hgt;
+    placed.push({ x, y: top(), w: wdt });
     ctx.lineWidth = 3.5 * d; ctx.strokeStyle = 'rgba(2,4,12,0.85)'; ctx.lineJoin = 'round';
     ctx.strokeText(text, x, y);
     ctx.fillStyle = col; ctx.fillText(text, x, y);
@@ -398,6 +404,8 @@ const SectorUI = {
     const w = this.world, B = this.els.body, o = this.sel, p = w.player;
     if (!o && this.dockPl) {
       // на станции полезнее сводка: что в трюме и какие поручения в работе
+      this.els.tabs.querySelectorAll('button').forEach(b => b.classList.remove('on'));
+      B.appendChild(h('div', { class: 'ph' }, `🛰 На станции ${this.dockPl.name}`));
       this.renderCargo();
       const mine = w.pilotQuests(p);
       if (mine.length) { B.appendChild(h('div', { class: 'ph sm' }, 'Ваши поручения')); for (const q of mine) B.appendChild(this.questCard(q, true)); }
@@ -590,7 +598,7 @@ const SectorUI = {
         const row = h('div', { class: 'slot' + (it ? ' full' : '') + (this.yardSlot && this.yardSlot.cat === k && this.yardSlot.i === i ? ' sel' : ''), onclick: () => { this.yardSlot = { cat: k, i }; this.renderDock(); } },
           h('span', { class: 'slot-ico' }, SLOT_TYPES[k].icon),
           it ? h('div', { class: 'slot-b' }, h('div', { class: 'nm' }, it.name, this.wearBadge(p.def, k, i)), h('div', { class: 'sh' }, Info.short(it))) : h('div', { class: 'slot-b empty' }, `${SLOT_TYPES[k].name}: пусто`),
-          it ? h('button', { class: 'ibtn danger', title: `Продать за ${w.sellValue(id, slotWear(p.def, k, i))} кр.`, onclick: e => { e.stopPropagation(); w.sellItem(k, i); Sound.click(); this.renderDock(); } }, '₵') : null);
+          it ? h('button', { class: 'ibtn danger', title: w.isInsured(id) ? `Страховой модуль — только как лом: ${Math.round(w.shopPrice(it) * 0.1)} кр.` : `Продать за ${w.sellValue(id, slotWear(p.def, k, i))} кр.`, onclick: e => { e.stopPropagation(); w.sellItem(k, i); Sound.click(); this.renderDock(); } }, '₵') : null);
         if (it) Tip.bind(row, () => Info.tooltip(it));
         left.appendChild(row);
       });
@@ -629,7 +637,8 @@ const SectorUI = {
         const row = h('div', { class: 'pick-row' + (heavy || poor ? ' dis' : '') },
           h('span', { class: 'tier' }, U.roman(it.tier)),
           h('div', { class: 'pb' }, h('div', { class: 'nm' }, it.name), h('div', { class: 'sh' }, Info.short(it))),
-          h('div', { class: 'pr' }, h('span', { class: 'dim' }, `×${w.stockOf(pl, it.id)}`), h('span', { class: heavy ? 'red' : '' }, '⚖' + it.mass), h('span', { class: poor ? 'red' : '' }, `${cost} кр.`)));
+          h('div', { class: 'pr' }, h('span', { class: 'dim' }, `×${w.stockOf(pl, it.id)}`), h('span', { class: heavy ? 'red' : '' }, '⚖' + it.mass),
+            cost < 0 ? h('span', { class: 'green', title: 'Старый модуль дороже нового — разницу вернут' }, `возврат ${-cost} кр.`) : h('span', { class: poor ? 'red' : '', title: cur ? 'Доплата с учётом продажи старого модуля' : '' }, `${cost} кр.`)));
         row.addEventListener('click', () => { const err = w.buyItem(S.cat, S.i, it.id); if (err) this.toast(err, 'bad'); else Sound.special('make'); this.renderDock(); });
         Tip.bind(row, () => Info.tooltip(it));
         right.appendChild(row);
@@ -637,9 +646,9 @@ const SectorUI = {
     } else {
       right.appendChild(h('div', { class: 'ph sm' }, 'Корпуса на продажу'));
       for (const H of w.shopHulls(pl)) {
-        const cost = w.shopPrice(H) - Math.round(w.shopPrice(HULLS[p.def.hull]) * 0.5);
+        const cost = w.shopPrice(H) - w.hullTradeIn();
         const row = h('div', { class: 'pick-row' + (cost > p.credits ? ' dis' : '') + (H.id === p.def.hull ? ' cur' : '') },
-          h('img', { src: GFX.shipImage(H.id, 0, 80), style: { width: '44px' } }),
+          h('img', { src: GFX.shipImage(H.id, 0, 80), style: { width: '48px', flex: 'none', objectFit: 'contain' } }),
           h('div', { class: 'pb' }, h('div', { class: 'nm' }, H.name), h('div', { class: 'sh' }, `♥${H.hp} ⚖${H.cap} укл.${H.ev}% · ${Info.slotsText(H)}`)),
           h('div', { class: 'pr' }, H.id === p.def.hull ? null : h('span', { class: 'dim' }, `×${w.stockOf(pl, H.id)}`), h('span', { class: cost > p.credits ? 'red' : '' }, `${Math.max(0, cost)} кр.`)));
         if (H.id !== p.def.hull) row.addEventListener('click', () => { const err = w.buyHull(H.id); if (err) this.toast(err, 'bad'); else { Sound.victory(true); this.toast(`Куплен корпус ${H.name}`, 'me'); } this.renderDock(); });
@@ -748,7 +757,7 @@ const SectorUI = {
     const others = w.factions.filter(x => x.alive && x !== f);
     const allies = others.filter(x => relTo(x) >= 40).map(x => x.short), foes = [...f.wars].map(x => w.factions[x].short);
     const card = h('div', { class: 'fc-card', style: { '--fc': f.color } },
-      h('div', { class: 'fc-head' }, h('div', { class: 'fc-emblem' }, f.name[0]),
+      h('div', { class: 'fc-head' }, h('div', { class: 'fc-emblem' }, ['✦', '⚔', '◈', '⬢', '⚖', '✺', '☯', '♜', '☀', '⛨', '❂', '♛'][f.idx % 12]),
         h('div', null, h('div', { class: 'fc-name' }, f.name), h('div', { class: 'fs' }, this.factionTraits(FACTIONS[f.idx])))),
       h('div', { class: 'fc-stats' },
         h('div', null, h('b', null, w.factionPlanets(f.idx).length), h('span', null, 'планет')),
@@ -791,7 +800,8 @@ const SectorUI = {
   },
 
   render() {
-    const w = this.world, cv = this.els.cv, ctx = cv.getContext('2d'), d = this.dpr, z = this.cam.z;
+    const w = this.world, cv = this.els.cv, ctx = cv.getContext("2d"), d = this.dpr, z = this.cam.z;
+    this._placed = [];
     const sid = this.viewSector, s = w.sectors[sid];
     if (this.bgFor !== sid) {
       this.bg = GFX.starfield(cv.width, cv.height, 1000 + sid * 77, { nebula: [s.star, '#3a0ca3', '#4361ee', '#7209b7', '#0f6e8c'] });

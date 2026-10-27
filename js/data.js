@@ -371,8 +371,8 @@ const HULL_LIST = [];
   }));
   genGeneric('radar', RADAR_T, (T, t, m) => ({
     range: T.range + Math.floor((t - 1) / 2) + (m.id === 'veil' ? 1 : 0),
-    acc: T.acc + (t - 1),
-    ev: T.ev + (t >= 4 ? 1 : 0),
+    acc: Math.round((T.acc + (t - 1)) * 1.25),
+    ev: T.ev + (t >= 4 ? 1 : 0) + 1,
     mass: Math.max(2, Math.round(mm(m, T.mass) * (1 - 0.04 * (t - 1)))),
   }));
   genGeneric('ew', EW_T, (T, t, m) => ({
@@ -384,7 +384,7 @@ const HULL_LIST = [];
     mass: Math.max(2, Math.round(mm(m, T.mass) * (1 - 0.04 * (t - 1)))),
   }));
   genGeneric('armor', ARMOR_T, (T, t, m) => ({
-    hp: Math.round(T.hp * (1 + 0.3 * (t - 1)) * mk(m, 1, 1.25, 0.9, 0.95, 1.05)),
+    hp: Math.round(T.hp * 1.25 * (1 + 0.3 * (t - 1)) * mk(m, 1, 1.25, 0.9, 0.95, 1.05)),
     armor: U.r1((T.armor + 0.01 * (t - 1) + mk(m, 0, 0.01, 0, 0, 0.005)) * 100) / 100,
     resist: Object.fromEntries(Object.entries(T.resist).map(([k, v]) => [k, Math.min(0.6, v + 0.03 * (t - 1))])),
     ev: T.ev,

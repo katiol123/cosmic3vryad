@@ -285,8 +285,9 @@ class Arena {
 
   text(x, y, s, col, life = 1, scale = 1) {
     // свежие числа рядом не налезают друг на друга — выстраиваются столбиком
-    const near = this.texts.filter(t => t.t < 0.45 && Math.abs(t.x - x) < 60 * this.dpr && Math.abs(t.y0 - y) < 30 * this.dpr).length;
-    this.texts.push({ x, y: y - near * 20 * this.dpr, y0: y, s, col, t: 0, d: life, scale });
+    const near = this.texts.filter(t => t.t < 0.8 && Math.abs(t.x - x) < 90 * this.dpr && Math.abs(t.y0 - y) < 40 * this.dpr).length;
+    // шаг — полная высота строки с учётом увеличения, чтобы числа не слипались
+    this.texts.push({ x, y: y - near * 22 * scale * this.dpr, y0: y, s, col, t: 0, d: life, scale });
     if (this.texts.length > 60) this.texts.shift();
   }
 
@@ -681,8 +682,13 @@ class Arena {
     // имя
     ctx.font = `600 ${10.5 * d}px "Exo 2", sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-    ctx.fillStyle = isActive ? '#ffffff' : 'rgba(210,225,255,0.75)';
-    ctx.fillText(s.name, V.x, y - 6 * d);
+    // на узкой карте имена слипаются — подписываем только того, кто сейчас ходит
+    if (this.cv.width / d >= 500 || isActive) {
+      ctx.lineWidth = 3 * d; ctx.strokeStyle = 'rgba(2,4,12,0.8)'; ctx.lineJoin = 'round';
+      ctx.strokeText(s.name, V.x, y - 6 * d);
+      ctx.fillStyle = isActive ? '#ffffff' : 'rgba(210,225,255,0.85)';
+      ctx.fillText(s.name, V.x, y - 6 * d);
+    }
     // щит
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(x - 1, y - 5 * d - 1, bw + 2, bh * 0.7 + 2);

@@ -182,7 +182,7 @@ const BattleUI = {
       } }, T.name);
       E.tactic.appendChild(b);
     }
-    const left = h('div', { class: 'bt-left panel' },
+    const left = E.left = h('div', { class: 'bt-left panel' },
       h('div', { class: 'bp-head' }, E.headImg, h('div', { class: 'bp-hd' }, h('div', { class: 'row' }, E.headName, E.headCtrl), E.headHull, E.target)),
       h('div', { class: 'bp-gauges' }, E.hp, E.sh),
       h('div', { class: 'bp-board' }, E.canvas, E.banner, E.yourTurn),
@@ -354,6 +354,11 @@ const BattleUI = {
     if (!v) return;
     const pct = (a, m) => (m > 0 ? U.clamp(a / m * 100, 0, 100) : 0) + '%';
     E.hpBar.style.width = pct(v.hp, v.s.maxHp);
+    E.hpBar.style.opacity = v.hp > 0 ? 1 : 0;
+    E.shBar.style.opacity = v.shield > 0 ? 1 : 0;
+    // уничтоженный корабль: поле гаснет, поверх — плашка
+    E.left.classList.toggle('dead', !v.alive);
+    E.left.dataset.dead = v.fled ? 'ВЫШЕЛ ИЗ БОЯ' : 'КОРАБЛЬ УНИЧТОЖЕН';
     E.hpTxt.textContent = `Корпус ${Math.ceil(v.hp)} / ${v.s.maxHp}`;
     E.shBar.style.width = pct(v.shield, v.s.maxShield);
     E.shBar.classList.toggle('over', v.shield > v.s.maxShield + 0.5);

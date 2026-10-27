@@ -618,7 +618,7 @@ select { background: rgba(10,16,36,.9); border: 1px solid var(--line); border-ra
 .pbars i.over, .gauge.sh i.over { background: linear-gradient(90deg, #3a86ff, #9cc3ff 60%, #e6f1ff); box-shadow: 0 0 14px rgba(156,195,255,.9); }
 /* станция: фиксированная высота, не прыгает при смене вкладок; карточка пилота не выглядывает */
 .sx-dock { align-items: flex-start; }
-.dk { height: 100%; }
+.dk { height: auto; max-height: 100%; }
 .dk-body { min-height: 0; }
 .sx-dock.show ~ .sx-hud, .sx-map:has(.sx-dock.show) .sx-hud, .sx-map:has(.sx-dock.show) .gx-legend { visibility: hidden; }
 @media (max-width: 1000px) {
@@ -666,8 +666,33 @@ select { background: rgba(10,16,36,.9); border: 1px solid var(--line); border-ra
 .fc-rep .relbar { height: 8px; }
 .fc-act { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 @media (max-width: 560px) { .fc-stats { grid-template-columns: repeat(2, 1fr); } }
-.mk-row { grid-template-columns: 1.6fr .55fr .55fr .6fr .55fr auto; }
+.mk-row { grid-template-columns: 1.6fr .55fr .55fr .6fr .55fr 200px; }
 .mk-btns { justify-content: flex-end; }
 .ok-note { padding: 10px 12px; border-radius: 10px; background: rgba(46,230,107,.08); border: 1px solid rgba(46,230,107,.3); color: #a6ffc4; font-size: 13px; margin: 4px 0 8px; }
 .gx-f.me { border: 1px solid rgba(255,224,102,.5); background: rgba(255,224,102,.07); border-radius: 10px; }
 .gx-side .stats { grid-template-columns: 1fr; } .gx-side .stats .stat-v, .gx-side .stats > div > :last-child { white-space: normal; }
+@media (max-width: 1000px) {
+  .mk-row { grid-template-columns: 1.3fr .5fr .5fr .6fr .5fr; }
+  .mk-row .mk-btns { grid-column: 1 / -1; justify-content: flex-start; }
+}
+/* бой: уничтоженный корабль, статусы, оружие */
+.bt-left.dead .bp-board { position: relative; }
+.bt-left.dead .bp-board canvas { filter: grayscale(1) brightness(.45); transition: filter .6s; }
+.bt-left.dead .bp-board::after { content: attr(data-dead); content: '✖ КОРАБЛЬ ВЫВЕДЕН ИЗ СТРОЯ'; position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--head); font-size: 20px; letter-spacing: 2px; color: #ff8fa3; text-shadow: 0 0 16px rgba(255,77,109,.8), 0 2px 4px #000; pointer-events: none; }
+.bp-status { margin-bottom: 4px; }
+.bp-weap { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); padding-bottom: 12px; }
+@media (max-width: 1000px) {
+  .fleet-bar { flex-wrap: nowrap; overflow-x: auto; }
+  .bt-right { grid-template-rows: 28vh 90px; }
+}
+.touch-only { display: none; }
+@media (pointer: coarse) { .touch-only { display: inline; } .fine-only { display: none; } }
+@media (max-width: 560px) {
+  #scr-sector .topbar, #scr-galaxy .topbar { flex-wrap: wrap; row-gap: 6px; }
+  #scr-sector .topbar .sx-title { flex-basis: calc(100% - 110px); order: 0; }
+  #scr-sector .topbar .grow { display: none; }
+}
+.green { color: #7bd88f; font-weight: 700; }
+.pick-row img + .pb { margin-left: 4px; }
+.fc-stats > div { background: rgba(255,255,255,.05); border: 1px solid color-mix(in srgb, var(--fc) 35%, transparent); }
+.fc-emblem { font-family: sans-serif; }

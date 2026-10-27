@@ -84,6 +84,12 @@ const GalaxyUI = {
     const cv = this.els.cv;
     this.cam.z = Math.min(cv.width / (WORLD_W + 80), cv.height / (WORLD_H + 80));
     this.cam.x = WORLD_W / 2; this.cam.y = WORLD_H / 2;
+    // узкий экран: карта во всю высоту, по центру — сектор игрока, остальное — перетаскиванием
+    if (cv.width / (this.dpr || 1) < 640) {
+      this.cam.z = Math.max(cv.width / (WORLD_W + 80), cv.height / (WORLD_H + 80)) * 0.95;
+      const p = this.world && this.world.player, s = p && p.loc != null ? this.world.sectors[p.loc] : null;
+      if (s) { this.cam.x = s.x; this.cam.y = s.y; }
+    }
   },
   toScreen(x, y) { const c = this.cam, cv = this.els.cv; return [(x - c.x) * c.z + cv.width / 2, (y - c.y) * c.z + cv.height / 2]; },
   toWorld(sx, sy) { const c = this.cam, cv = this.els.cv; return [(sx - cv.width / 2) / c.z + c.x, (sy - cv.height / 2) / c.z + c.y]; },
@@ -461,12 +467,13 @@ const GalaxyUI = {
       }
       // на узком экране подписи мешают друг другу: показываем только важные, остальные — по нажатию
       const narrow = this.els.cv.width / d < 640 && z < 0.9;
-      if (!narrow || sel || hov || (w.player && w.player.loc === s.id)) {
+      const important = sel || hov || (w.player && w.player.loc != null && (w.player.loc === s.id || w.neighbors(w.player.loc).includes(s.id))) || w.openQuests().some(q => q.sector === s.id);
+      if (!narrow || important) {
         ctx.font = `600 ${Math.max(11, 12 * Math.min(1.4, z + 0.3)) * d}px "Exo 2", sans-serif`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'top';
         ctx.lineWidth = 3.5 * d; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(2,4,12,0.85)';
         ctx.strokeText(s.name, x, y + 62 * z);
-        ctx.fillStyle = s.owner >= 0 ? U.rgba(w.factions[s.owner].color, 0.95) : 'rgba(220,228,245,0.9)';
+        ctx.fillStyle = s.owner >= 0 ? U.rgba(w.factions[s.owner].color, 0.95) : '#d4ddf2';
         ctx.fillText(s.name, x, y + 62 * z);
       }
     }

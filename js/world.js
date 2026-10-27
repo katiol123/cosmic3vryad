@@ -301,8 +301,11 @@ class World {
       born: this.day, kills: 0, rep: {}, member: FREE, personality: null, alive: true, ctrl: 'ai',
     }, extra);
     if (kind === 'pilot') {
-      const first = U.pick(PILOT_FIRST), last = U.pick(PILOT_LAST);
-      a.name = extra.name || `${first} ${last}`;
+      // имена наёмников не повторяются
+      const used = new Set([...this.agents.values()].filter(x => x.kind === 'pilot').map(x => x.name));
+      let nm = extra.name;
+      for (let k = 0; !nm && k < 50; k++) { const c = `${U.pick(PILOT_FIRST)} ${U.pick(PILOT_LAST)}`; if (!used.has(c)) nm = c; }
+      a.name = nm || `${U.pick(PILOT_FIRST)} ${U.pick(PILOT_LAST)} ${U.ri(2, 9)}`;
       a.def.name = a.name;
       a.credits = extra.credits != null ? extra.credits : 2500 + Math.floor(Math.random() * 3000);
       a.personality = a.personality || { trade: Math.random(), hunt: Math.random(), merc: Math.random(), loyal: Math.random(), greed: Math.random() };
@@ -379,7 +382,7 @@ class World {
       sat /= wsum;
       p.shortage = 1 - sat;
       const s = this.sectors[p.sector];
-      p.stability = U.clamp(p.stability + (sat - 0.75) * 0.02 - s.heat * 0.004 + 0.002, 0.15, 1);
+      p.stability = U.clamp(p.stability + (sat - 0.65) * 0.02 - s.heat * 0.004 + 0.003, 0.15, 1);
       p.pop = U.clamp(p.pop * (1 + (sat - 0.7) * 0.004), 0.3, 20);
       p.defense = Math.min(p.maxDefense = Math.round(300 + p.pop * 120), p.defense + 20);
       // излишки уходят внутренним рынкам — небольшая прибыль казне
@@ -443,7 +446,7 @@ class World {
       return;
     }
     // налоги
-    const tax = U.sum(planets, p => p.pop * p.stability * 7) * (f.buffs && f.buffs.tax > this.day ? 1.15 : 1);
+    const tax = U.sum(planets, p => p.pop * p.stability * 9) * (f.buffs && f.buffs.tax > this.day ? 1.15 : 1);
     f.treasury += tax; f.st.tax += tax;
     // содержание флота и жалованье пилотам на службе
     const mine = [...this.agents.values()].filter(a => a.faction === f.idx);
@@ -571,8 +574,9 @@ class World {
     const P = T.planet != null ? this.planets[T.planet] : null;
     switch (T.type) {
       case 'buy': {
-        if (P && P.pop > 0) this.buy(a, P, T.good, T.qty);
-        a.task = { type: 'sell', sector: this.planets[T.to].sector, planet: T.to, good: T.good, cost: T.cost };
+        // в учёт прибыли идёт фактическая цена закупки
+        const paid = P && P.pop > 0 ? this.buy(a, P, T.good, T.qty) : 0;
+        a.task = { type: 'sell', sector: this.planets[T.to].sector, planet: T.to, good: T.good, cost: paid || T.cost || 0 };
         this.go(a, a.task.sector);
         return false;
       }
@@ -582,7 +586,8 @@ class World {
           const profit = gain - (T.cost || 0);
           if (a.faction >= 0 && a.faction !== PIRATE) {
             const f = this.factions[a.faction];
-            f.treasury += Math.max(0, profit) * 0.25; f.st.trade += Math.max(0, profit); f.st.missionsOk++;
+            // торговая пошлина с оборота и доля прибыли: торговля кормит казну, даже когда маржа съедена конкурентами
+            f.treasury += gain * 0.2 + Math.max(0, profit) * 0.25; f.st.trade += Math.max(0, profit); f.st.missionsOk++;
             this.stats.tradeTotal += Math.max(0, profit);
           }
           if (profit > 2000) this.log(`◇ ${this.who(a)} доставил груз на ${P.name}: прибыль ${Math.round(profit)} кр.`, 'trade', { f: [a.faction], s: P.sector });
@@ -624,7 +629,7 @@ class World {
         if (b && b.sector === a.loc) {
           const guards = this.present(a.loc).filter(o => o.faction === PIRATE);
           if (!guards.length) {
-            b.defense -= this.strength(a) / 25;
+            b.defense -= this.siegeDamage(a); b.siegeDay = this.day;
             if (b.defense <= 0) this.destroyBase(b, a);
             else { a.wait = 1; return false; }
           } else { a.wait = 1; return false; }
@@ -735,6 +740,16 @@ class World {
     // осторожный пилот с хрупким кораблём обходит неспокойные сектора
     const danger = pilot ? Math.max(0, 0.5 - this.assess(a).combat) : 0;
     let best = null, bv = 0;
+    // груз, который уже везут конкуренты: он собьёт цену к нашему прилёту
+    if (this._pendDay !== this.day) {
+      this._pend = {};
+      for (const x of this.agents.values()) if (x.task && (x.task.type === 'sell' || x.task.type === 'buy') && x.task.to != null || (x.task && x.task.type === 'sell')) {
+        const to = x.task.type === 'sell' ? x.task.planet : x.task.to, g = x.task.good, q = x.task.type === 'sell' ? (x.cargo[g] || 0) : x.task.qty || 0;
+        if (to == null || !g) continue;
+        const k = to + ':' + g; this._pend[k] = (this._pend[k] || 0) + q;
+      }
+      this._pendDay = this.day;
+    }
     for (const o of origins) {
       for (const d of this.planets) {
         if (d === o || d.pop <= 0 || !this.friendlyPlanet(a, d)) continue;
@@ -742,12 +757,23 @@ class World {
         if (h > 5) continue;
         if (!pilot && a.faction >= 0 && d.owner !== a.faction && this.rel(a.faction, d.owner) < 0) continue;
         for (const g of GOODS) {
-          const margin = d.price[g.id] * 0.92 - o.price[g.id];
-          if (margin <= 0) continue;
-          const qty = Math.min(space, Math.floor(o.stock[g.id] * 0.6), pilot ? Math.floor(a.credits / o.price[g.id]) : 1e9);
-          if (qty < 3) continue;
+          const pend = this._pend[d.id + ':' + g.id] || 0;
+          // фракционный торговец — это снабжение: возит и без наценки, лишь бы не в убыток
+          const slack = pilot ? 0 : 0.08;
+          if (this.priceAt(d, g.id, d.stock[g.id] + pend) * (0.92 + slack) <= o.price[g.id]) continue;
+          // цены поштучные: берём столько, пока каждая следующая единица ещё приносит прибыль
+          const lim = Math.min(space, Math.floor(o.stock[g.id] * 0.6));
+          let qty = 0, profit = 0, spend = 0;
+          while (qty < lim) {
+            const buyU = this.priceAt(o, g.id, o.stock[g.id] - qty), sellU = this.priceAt(d, g.id, d.stock[g.id] + pend + qty + 1) * 0.92;
+            if (sellU + buyU * slack <= buyU || (pilot && spend + buyU > a.credits)) break;
+            profit += sellU - buyU; spend += buyU; qty++;
+          }
+          if (qty < 3 || (pilot ? profit < 150 : profit < -qty * 2)) continue;
           const days = 1 + this.hops(a.loc, o.sector) + h * 1.6;
-          let v = margin * qty / days;
+          // доставка туда, где товара не хватает, ценна сама по себе
+          const need = Math.max(0, 1 - (d.stock[g.id] + pend) / Math.max(1, this.target(d, g.id)));
+          let v = (profit + (pilot ? 0 : need * qty * GOOD[g.id].base * 0.5)) / days;
           if (danger) v /= 1 + danger * (this.sectors[o.sector].heat + this.sectors[d.sector].heat);
           if (v > bv) { bv = v; best = { o, d, g: g.id, qty }; }
         }
@@ -760,7 +786,8 @@ class World {
       this.go(a, n);
       return;
     }
-    a.task = { type: 'buy', sector: best.o.sector, planet: best.o.id, to: best.d.id, good: best.g, qty: best.qty, cost: best.qty * best.o.price[best.g] };
+    a.task = { type: 'buy', sector: best.o.sector, planet: best.o.id, to: best.d.id, good: best.g, qty: best.qty, cost: 0 };
+    const pk = best.d.id + ':' + best.g; this._pend[pk] = (this._pend[pk] || 0) + best.qty;
     this.go(a, best.o.sector);
     this.sectors[best.o.sector].traffic += 1;
   }
@@ -851,12 +878,17 @@ class World {
 
   // ИИ-пилот: такой же наёмник, как игрок
   // трезвая оценка пилотом самого себя: сила относительно типичной угрозы и кошелёк
-  assess(a) {
+  // типичная угроза: сила пирата на 60-м перцентиле (пересчёт раз в день)
+  threatRef() {
     if (this._thrDay !== this.day) {
       const pir = [...this.agents.values()].filter(x => x.faction === PIRATE && x.s).map(x => this.strength(x)).sort((x, y) => x - y);
       this._thr = pir.length ? pir[Math.floor(pir.length * 0.6)] : 200;
       this._thrDay = this.day;
     }
+    return this._thr;
+  }
+  assess(a) {
+    this.threatRef();
     const P = a.personality || { hunt: 0.5 };
     const hpF = (a.hp || 0) / Math.max(1, a.maxHp);
     const power = this.strength(a) / this._thr;
@@ -953,6 +985,8 @@ class World {
     this.log(`🏴 ${this.factions[fi].short} захватила планету ${p.name}${old >= 0 ? ' у ' + this.factions[old].short : ''}!`, 'war', { f: [fi, old], s: p.sector });
   }
 
+  // урон по станции за день осады: даже лёгкий корабль что-то да пробьёт
+  siegeDamage(a) { return Math.max(60, this.strength(a) / 12); }
   destroyBase(b, by) {
     if (!b.alive) return;
     b.alive = false;
@@ -970,8 +1004,10 @@ class World {
       if (!b.alive) continue;
       b.wealth += 160; // дань с окрестностей, контрабанда
       // богатая база тратится на укрепления и вербовку
-      if (b.wealth > 20000) { const sp = b.wealth * 0.03; b.wealth -= sp; b.fort = (b.fort || 0) + sp * 0.3; }
-      b.defense = Math.min(b.maxDefense = 2500 + (b.fort || 0), b.defense + 25);
+      if (b.wealth > 20000) { const sp = b.wealth * 0.03; b.wealth -= sp; b.fort = Math.min(5000, (b.fort || 0) + sp * 0.3); }
+      b.maxDefense = 2500 + (b.fort || 0);
+      // в осаде станцию не чинят
+      if (!(b.siegeDay >= this.day - 1)) b.defense = Math.min(b.maxDefense, b.defense + 25);
       const mine = [...this.agents.values()].filter(a => a.faction === PIRATE && a.base === b.id);
       const cap = 3 + Math.floor(b.wealth / 3000);
       const starving = mine.length < 3 && this.r() < 0.6; // база всегда может набрать хотя бы пару кораблей
@@ -981,11 +1017,14 @@ class World {
         if (!starving) b.wealth = Math.max(0, b.wealth - a.price * 0.2);
       }
     }
-    if (this.baseRespawn && this.day >= this.baseRespawn && this.bases.filter(b => b.alive).length < Math.max(2, Math.round(this.nSectors / 10))) {
+    // пока баз меньше нормы, на месте разгромленной со временем появляется новая
+    const want = Math.max(2, Math.round(this.nSectors / 10));
+    if (!this.baseRespawn && this.bases.filter(b => b.alive).length < want) this.baseRespawn = this.day + 15 + Math.floor(Math.random() * 15);
+    if (this.baseRespawn && this.day >= this.baseRespawn && this.bases.filter(b => b.alive).length < want) {
       const b = this.newBase();
       this.baseRespawn = null;
       this.log(`☠ Пираты основали новую базу «${b.name}» в секторе ${this.sectors[b.sector].name}.`, 'pirate', { s: b.sector });
-      this.spawn('pirate', PIRATE, b.sector, { base: b.id });
+      for (let i = 0; i < 3; i++) this.spawn('pirate', PIRATE, b.sector, { base: b.id });
     }
   }
 
@@ -1312,7 +1351,7 @@ class World {
           np.def = this.starterDef ? this.starterDef(a.name) : np.def;
           np.hp = null; np.shield = null; this.refresh(np);
           // страховой корабль не продашь дороже лома
-          np.insuredItems = defItems(np.def).map(i => i.id);
+          np.insuredItems = defItems(np.def).map(i => i.id); np.insuredHull = np.def.hull;
           this.log(`★ Спасательная капсула доставила вас на ${home.name}. Страховка выдала новый корабль${insurance ? ` и ${insurance} кр. возмещения` : ' (возмещения нет: прошлая потеря была меньше 30 дней назад)'}.`, 'player', { s: home.sector });
         }
       }

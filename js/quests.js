@@ -86,7 +86,8 @@ Object.assign(World.prototype, {
       const enPow = U.sum([...this.agents.values()].filter(a => a.faction === e), a => this.strength(a));
       const len = this.day - (f.warSince[e] || this.day);
       if (myPow < enPow * 0.9 || f.st.lostPlanets > 0) opts.push([2.5, () => this.questRecon(f, E), 'recon']);
-      opts.push([1.5 + f.war, () => this.questConvoy(f, E), 'convoy']);
+      // удар по снабжению — только если есть кому его поручить: служащие фракции
+      if ([...this.agents.values()].filter(a => a.kind === 'pilot' && a.member === f.idx).length >= 2) opts.push([1.5 + f.war, () => this.questConvoy(f, E), 'convoy']);
       if (len > 18 && f.diplo > 0.45 && !this.openQuests().some(q => q.type === 'peace' && [q.giver, q.enemy].includes(f.idx)))
         opts.push([1 + f.diplo * 3 + len / 30, () => this.questPeace(f, E), 'peace']);
     }
@@ -118,10 +119,18 @@ Object.assign(World.prototype, {
     const base = this.bases.filter(b => b.alive).sort((a, b) => this.hops(a.sector, f.capitalSector) - this.hops(b.sector, f.capitalSector))[0];
     if (!base) return;
     const avg = U.sum(this.factions, x => x.tech) / this.factions.length;
-    const tier = U.clamp(Math.round(avg + 1), 2, 5);
-    const H = U.pick(HULL_LIST.filter(h => ['destroyer', 'cruiser', 'frigate', 'raider'].includes(h.cls) && h.tier <= tier));
-    const def = emptyDef(H.id, 'Флагман');
-    autoFill(def, tier);
+    // флагман грозный, но по зубам опытному наёмнику: не сильнее 1.3 типичного пирата
+    const cap = this.threatRef() * 1.3;
+    let def = null;
+    for (let tier = U.clamp(Math.round(avg + 1), 2, 5); tier >= 1 && !def; tier--) {
+      for (let k = 0; k < 4 && !def; k++) {
+        const H = U.pick(HULL_LIST.filter(h => ['destroyer', 'cruiser', 'frigate', 'raider', 'corvette'].includes(h.cls) && h.tier <= tier));
+        const d = emptyDef(H.id, 'Флагман');
+        autoFill(d, tier);
+        const st = computeStats(d);
+        if (this.strength({ s: st, hp: st.maxHp }) <= cap || tier === 1) def = d;
+      }
+    }
     // главарь — не новый корабль, а самый опасный из пиратов базы, которому база справила флагман
     const crew = [...this.agents.values()].filter(a => a.faction === PIRATE && a.base === base.id && !a.battle);
     let boss = crew.find(a => a.boss);
@@ -139,7 +148,7 @@ Object.assign(World.prototype, {
     }
     const lost = f.st.lostToPirates;
     this.makeQuest('boss', f.idx, {
-      boss: boss.id, sector: base.sector, titleExtra: boss.name, reward: Math.round(4000 + tier * 1800), rep: 18, deadline: this.day + 35,
+      boss: boss.id, sector: base.sector, titleExtra: boss.name, reward: Math.round(4000 + this.strength(boss) * 8), rep: 18, deadline: this.day + 35,
       reason: `пираты уничтожили уже ${lost} наших кораблей. Их ведёт ${boss.name} с базы «${base.name}». Награда — тому, кто его уничтожит.`,
     });
   },
@@ -506,7 +515,7 @@ Object.assign(World.prototype, {
   // ---------- ИИ-наёмники берутся за поручения ----------
   pilotPickQuest(a, A) {
     A = A || this.assess(a);
-    const me = this.strength(a), thr = this._thr || 200;
+    const me = this.strength(a), thr = this.threatRef();
     const opts = [];
     for (const q of this.openQuests()) {
       if (this.canTake(a, q)) continue;
@@ -520,7 +529,7 @@ Object.assign(World.prototype, {
       if (q.type === 'relic' && q.stage === 0) need = Math.max(260, thr * 1.2);
       if (q.type === 'convoy') need = thr;
       if (q.type === 'recon' || q.type === 'rescue') need = thr * 0.6;
-      if (q.type === 'aid' && a.credits < 1500) continue; // не на что закупить груз
+      if (q.type === 'aid' && a.credits < 600) continue; // не на что закупить груз
       if (me < need * A.caution) continue;
       const far = q.sector != null ? this.hops(a.loc, q.sector) : 3;
       // бедный ценит деньги, богатый — репутацию
@@ -570,8 +579,8 @@ Object.assign(World.prototype, {
       if (!b) return true;
       const guards = this.present(a.loc).filter(o => o.faction === PIRATE && !o.battle);
       if (!guards.length) {
-        const dmg = this.strength(a) / 25;
-        b.defense -= dmg;
+        const dmg = this.siegeDamage(a);
+        b.defense -= dmg; b.siegeDay = this.day;
         q.contrib[a.id] = (q.contrib[a.id] || 0) + dmg;
         if (b.defense <= 0) this.destroyBase(b, a);
       }
